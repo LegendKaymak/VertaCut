@@ -1,6 +1,14 @@
-## VertaCut 1.8.2
+## VertaCut 2.0.0
 
-First public release of **VertaCut by LegendKaymak** — turn long stream VODs into vertical 9:16 short clips, right in your browser.
+### New in 2.0
+- **Fast audio extraction** for MP4/MOV: only the audio track is read and decoded with WebCodecs, so a 2-hour stream is ready in minutes instead of ~30 minutes
+- **Candidate comparison**: alternative cuts of the same moment are grouped, with speech start, audio peak and chat peak markers; preview tight / original / context versions and pick one
+- **Channel glossary**: save player names and game terms once, fix every misspelling in one step with undo; terms are sent to transcription as hints
+- **Platform versions**: separate hook, caption position and text for Shorts, Reels and TikTok, downloaded as one ZIP with covers and descriptions
+- Each of these can be turned on or off in Settings → Features
+- 38 bug fixes (memory use on long streams, caption edits lost on trim, SRT timing, offline cache and more)
+
+**VertaCut by LegendKaymak** — **VertaCut by LegendKaymak** — turn long stream VODs into vertical 9:16 short clips, right in your browser.
 
 ### Highlights
 - **AI clip finder** with your own API keys (Gemini, OpenAI, Anthropic, Groq, OpenRouter, xAI, DeepSeek, Ollama) — Gemini "Auto" mode tries working models automatically
@@ -15,13 +23,21 @@ First public release of **VertaCut by LegendKaymak** — turn long stream VODs i
 - Everything runs locally — your videos never leave your device
 
 ### Getting started
-Try it live at **[vertacut.vercel.app](https://vertacut.vercel.app)**, or download `VertaCut-1.8.2.zip`, extract it and serve the folder with any static server (e.g. `npx serve`). Chrome or Edge recommended.
+Try it live at **[vertacut.vercel.app](https://vertacut.vercel.app)**, or download `VertaCut-2.0.0.zip`, extract it and serve the folder with any static server (e.g. `npx serve`). Chrome or Edge recommended.
 
 ---
 
-## VertaCut 1.8.2 (Türkçe)
+## VertaCut 2.0.0 (Türkçe)
 
-**VertaCut by LegendKaymak**'ın ilk sürümü — uzun yayın videolarından tarayıcıda dikey 9:16 kısa klipler çıkarın.
+### 2.0'daki yenilikler
+- **Hızlı ses çıkarma** (MP4/MOV): yalnızca ses izi okunup WebCodecs ile çözülür; 2 saatlik yayın yaklaşık 30 dakika yerine birkaç dakikada hazır
+- **Aday karşılaştırma**: aynı ana ait kesimler gruplanır; konuşma başlangıcı, ses ve sohbet zirvesi işaretlenir; sıkı, asıl ve bağlamlı sürümleri dinleyip birini seçersin
+- **Kanal sözlüğü**: oyuncu adları ve terimler bir kez kaydedilir, yanlış yazımlar tek adımda düzeltilir (geri alınabilir); terimler yazıya dökmede ipucu olarak gider
+- **Platform sürümleri**: Shorts, Reels ve TikTok için ayrı kanca, altyazı konumu ve metin; kapak ve açıklamalarla tek ZIP paketi
+- Hepsi Ayarlar → Özellikler'den açılıp kapatılabilir
+- 38 hata düzeltmesi (uzun yayında bellek, kırpmada kaybolan altyazı düzeltmeleri, SRT zamanları, çevrimdışı önbellek ve daha fazlası)
+
+**VertaCut by LegendKaymak** — uzun yayın videolarından tarayıcıda dikey 9:16 kısa klipler çıkarın.
 
 ### Öne çıkanlar
 - Kendi API anahtarlarınızla **yapay zekâ klip bulucu** (Gemini, OpenAI, Anthropic, Groq, OpenRouter, xAI, DeepSeek, Ollama) — Gemini "Otomatik" modu çalışan modeli kendisi bulur
@@ -36,4 +52,4 @@ Try it live at **[vertacut.vercel.app](https://vertacut.vercel.app)**, or downlo
 - Her şey cihazınızda çalışır — videolarınız hiçbir yere yüklenmez
 
 ### Başlarken
-**[vertacut.vercel.app](https://vertacut.vercel.app)** adresinden hemen deneyin ya da `VertaCut-1.8.2.zip` dosyasını indirip klasörü herhangi bir statik sunucuyla açın (ör. `npx serve`). Chrome veya Edge önerilir.
+**[vertacut.vercel.app](https://vertacut.vercel.app)** adresinden hemen deneyin ya da `VertaCut-2.0.0.zip` dosyasını indirip klasörü herhangi bir statik sunucuyla açın (ör. `npx serve`). Chrome veya Edge önerilir.
