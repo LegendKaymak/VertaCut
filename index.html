@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>VertaCut: yayından dikey klip</title>
+<meta name="description" content="Uzun yayın videolarından altyazılı 9:16 dikey klipler çıkar. Video tarayıcından hiç çıkmaz.">
+<meta name="theme-color" content="#141012">
+<script>try{var t=(JSON.parse(localStorage.getItem("vertacut.settings.v1")||"{}").theme)||"sunset";if(t==="system")t=matchMedia("(prefers-color-scheme: light)").matches?"light":"sunset";document.documentElement.dataset.theme=t;}catch(e){}</script>
+<link rel="manifest" href="manifest.webmanifest?v=3">
+<link rel="icon" href="icons/icon.svg?v=3" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png?v=3" type="image/png" sizes="32x32">
+<link rel="icon" href="icons/favicon-16.png?v=3" type="image/png" sizes="16x16">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=3">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&family=Anton&family=Archivo+Black&family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Poppins:wght@800&family=Figtree:wght@700&family=Bangers&family=Rubik+Mono+One&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/AlloVariable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7.5 5.2v13.6a.8.8 0 0 0 1.2.7l10.6-6.8a.8.8 0 0 0 0-1.4L8.7 4.5a.8.8 0 0 0-1.2.7z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="3.6" height="14" rx="1" fill="currentColor"/><rect x="13.9" y="5" width="3.6" height="14" rx="1" fill="currentColor"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 15v3.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V15"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M19 7h1M4 17h3M13 17h7"/><circle cx="16" cy="7" r="2.4"/><circle cx="10" cy="17" r="2.4"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M11 3.5l1.9 5 5 1.9-5 1.9-1.9 5-1.9-5-5-1.9 5-1.9z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="2.6"/><circle cx="6" cy="17.5" r="2.6"/><path d="M8.3 8 20 18M8.3 16 20 6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12.5h8L17 7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 24 24"><path d="M7 3v14h14M3 7h14v14"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5v3"/></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><path d="M3 12h2.5l2-5 3 10 3-13 3 11 1.5-3H21"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M15.5 9.2a4 4 0 0 1 0 5.6M18 6.8a7.5 7.5 0 0 1 0 10.4"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="6.5" y="2.8" width="11" height="18.4" rx="2.4"/><path d="M10.5 18h3"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="3.6"/><path d="M10.6 13 19 4.5M16 7.5l2.2 2.2M13.8 9.8l1.6 1.6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6.5 3.5h7.5l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20V4a.5.5 0 0 1 .5-.5zM14 3.5V8h4"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
+    <symbol id="i-in" viewBox="0 0 24 24"><path d="M11 5H7v14h4"/></symbol>
+    <symbol id="i-out" viewBox="0 0 24 24"><path d="M13 5h4v14h-4"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 4l2.4 5 5.4.6-4 3.7 1.1 5.4L12 16l-4.9 2.7 1.1-5.4-4-3.7 5.4-.6z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19 12a7 7 0 1 1-2.05-4.95M19 4.5V8h-3.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 9.5h4M3 14.5h4M17 9.5h4M17 14.5h4"/></symbol>
+    <symbol id="i-cut" viewBox="0 0 24 24"><path d="M4 12h3M17 12h3M9.5 6v12M14.5 6v12"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="18" cy="12" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+    <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><circle cx="9" cy="9" r="1.8"/><path d="m20 15-4.5-4.5L6 20"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.6 5.4 3.6 8.5s-1.1 5.9-3.6 8.5c-2.5-2.6-3.6-5.4-3.6-8.5S9.5 6.1 12 3.5z"/></symbol>
+    <symbol id="i-zoom" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M11 8v6M8 11h6"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4.5 5.5h15a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-4.5 3.5v-3.5h-1a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z"/><path d="M8 10h8M8 13h5"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 10.8 7.6-4M8.2 13.2l7.6 4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></symbol>
+  </defs>
+</svg>
+
+<!-- ============ ANA EKRAN ============ -->
+<main id="home" class="view home" data-view="home">
+  <header class="home-bar">
+    <a class="wordmark" href="#" aria-label="VertaCut ana sayfa"><svg class="wm-mark" viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="wmG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#FF2D6F"/></linearGradient><mask id="wmM"><rect width="512" height="512" fill="#fff"/><path d="M80 250 L440 170" stroke="#000" stroke-width="22"/></mask></defs><rect width="512" height="512" rx="116" fill="url(#wmG)"/><path d="M150 150 H362 L256 364 Z" fill="#fff" stroke="#fff" stroke-width="44" stroke-linejoin="round" mask="url(#wmM)"/></svg>VertaCut</a>
+    <div class="bar-actions">
+      <button class="btn text" id="installBtn" hidden><svg class="ic"><use href="#i-download"/></svg>Uygulamayı yükle</button>
+      <button class="btn icon" data-open-settings aria-label="Ayarlar" title="Ayarlar"><svg class="ic"><use href="#i-sliders"/></svg></button>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="hero-copy">
+      <h1>Uzun yayını,<br>izlenen kısa kliplere dönüştür.</h1>
+      <p class="lede">Saatlik bir yayını bırak. VertaCut en güçlü anları bulur, facecam'i yerleştirir, kelime kelime altyazı ekler ve 9:16 MP4 olarak verir. Video bilgisayarından hiç çıkmaz.</p>
+      <ul class="facts">
+        <li><b>Tarayıcıda işlenir</b> Videon hiçbir sunucuya yüklenmez.</li>
+        <li><b>Kendi anahtarınla</b> Gemini, OpenAI, Claude, Groq, OpenRouter ve diğerleri.</li>
+        <li><b>Anahtarsız da çalışır</b> Ses tepkilerinden hype anlarını bulur.</li>
+      </ul>
+    </div>
+    <label class="drop" id="drop" tabindex="0">
+      <input type="file" id="fileInput" accept="video/*,.mkv,.mov,.mp4,.webm" hidden>
+      <canvas class="drop-map" id="dropMap" aria-hidden="true"></canvas>
+      <span class="drop-inner">
+        <svg class="ic xl"><use href="#i-upload"/></svg>
+        <span class="drop-title">Yayın videosunu buraya bırak</span>
+        <span class="drop-sub">veya dosya seçmek için tıkla. MP4, MOV, WebM ve MKV olur.</span>
+      </span>
+    </label>
+  </section>
+
+  <section class="recent" id="recentWrap" hidden>
+    <h2>Son projeler</h2>
+    <ul class="recent-list" id="recentList"></ul>
+  </section>
+
+  <section class="how">
+    <h2>Nasıl çalışır</h2>
+    <ol class="steps">
+      <li><span class="n">1</span><div><h3>Kadrajı ayarla</h3><p>Facecam'in ve oyunun yerini bir kez işaretle. Tüm klipler bu düzeni kullanır.</p></div></li>
+      <li><span class="n">2</span><div><h3>Yazıya dök</h3><p>Whisper veya Gemini konuşmayı kelime zamanlarıyla çıkarır. Hazır altyazı dosyan varsa onu da kullanabilirsin.</p></div></li>
+      <li><span class="n">3</span><div><h3>Anları bulsun</h3><p>AI her klip için viral puan, kanca, başlık, etiket ve vurgulanacak kelimeleri önerir.</p></div></li>
+      <li><span class="n">4</span><div><h3>İnce ayar ve dışa aktar</h3><p>Kırp, altyazı stilini seç, boşlukları otomatik kes ve hepsini sırayla indir.</p></div></li>
+    </ol>
+  </section>
+  <footer class="home-foot">VertaCut, tarayıcında çalışan açık bir web uygulamasıdır. API anahtarların yalnızca bu cihazda saklanır.</footer>
+</main>
+
+<!-- ============ ÇALIŞMA ALANI ============ -->
+<main id="workspace" class="view workspace" data-view="workspace" hidden>
+  <header class="ws-bar">
+    <button class="btn icon" id="wsBack" aria-label="Projelere dön" title="Projeler"><svg class="ic"><use href="#i-back"/></svg></button>
+    <input class="title-input" id="projName" aria-label="Proje adı" spellcheck="false">
+    <span class="meta" id="projMeta"></span>
+    <div class="spacer"></div>
+    <button class="btn icon q-btn" id="queueBtn" hidden aria-label="Dışa aktarılanlar" title="Dışa aktarılanlar"><svg class="ic"><use href="#i-download"/></svg><em id="queueBadge">0</em></button>
+    <button class="btn icon" data-open-keys aria-label="Klavye kısayolları (?)" title="Klavye kısayolları (?)"><svg class="ic"><use href="#i-kbd"/></svg></button>
+    <button class="btn tonal" id="framingBtn"><svg class="ic"><use href="#i-crop"/></svg><span>Kadraj</span></button>
+    <button class="btn icon" data-open-settings aria-label="Ayarlar" title="Ayarlar"><svg class="ic"><use href="#i-sliders"/></svg></button>
+    <button class="btn filled" id="exportAllBtn" disabled><svg class="ic"><use href="#i-download"/></svg><span>Tümünü dışa aktar</span></button>
+  </header>
+
+  <div class="ws-grid">
+    <section class="source">
+      <div class="player" id="player">
+        <video id="mainVideo" playsinline preload="auto"></video>
+        <div class="relink" id="relink" hidden>
+          <p>Bu projenin videosu yeniden seçilmeli.</p>
+          <p class="muted" id="relinkName"></p>
+          <button class="btn filled" id="relinkBtn"><svg class="ic"><use href="#i-file"/></svg>Videoyu seç</button>
+        </div>
+      </div>
+      <div class="transport">
+        <button class="btn icon" id="playBtn" aria-label="Oynat/duraklat (Boşluk)"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="tc" id="tc">0:00 / 0:00</span>
+        <div class="spacer"></div>
+        <button class="btn text sm" id="markIn" title="Başlangıç işaretle (I)"><svg class="ic"><use href="#i-in"/></svg>Başlangıç</button>
+        <button class="btn text sm" id="markOut" title="Bitiş işaretle (O)"><svg class="ic"><use href="#i-out"/></svg>Bitiş</button>
+        <button class="btn tonal sm" id="addMarked" disabled title="İşaretli aralıktan klip oluştur"><svg class="ic"><use href="#i-plus"/></svg>Klip yap</button>
+      </div>
+      <div class="hype" id="hypeWrap">
+        <canvas id="hypeMap" aria-label="Hype haritası: yayının ses yoğunluğu ve klipler"></canvas>
+        <div class="hype-tip" id="hypeTip" hidden></div>
+        <div class="hype-legend"><span>Hype haritası</span><span class="muted">Tıklayınca o ana gider, sürükleyince aralık seçer</span></div>
+      </div>
+
+      <div class="tx">
+        <div class="tx-head">
+          <h2>Transkript</h2>
+          <div class="search">
+            <svg class="ic sm"><use href="#i-search"/></svg>
+            <input id="txSearch" placeholder="Transkriptte ara" aria-label="Transkriptte ara">
+            <span class="muted sm" id="txCount"></span>
+          </div>
+          <button class="btn text sm" id="chaptersBtn" title="Uzun video için YouTube bölümleri ve açıklama"><svg class="ic"><use href="#i-film"/></svg>Bölümler</button>
+          <label class="switch sm" title="Oynatırken metni takip et"><input type="checkbox" id="txFollow" checked><span></span>Takip</label>
+        </div>
+        <div class="tx-body" id="txBody">
+          <div class="empty" id="txEmpty">
+            <p>Henüz transkript yok. Klipleri AI ile bulmak ve altyazı eklemek için konuşmayı yazıya dök.</p>
+          </div>
+        </div>
+        <button class="btn filled sm floating-sel" id="selClip" hidden><svg class="ic"><use href="#i-scissors"/></svg>Seçimden klip yap</button>
+      </div>
+    </section>
+
+    <aside class="clips-pane">
+      <div class="pipeline" id="pipeline">
+        <div class="pl-step" data-step="audio">
+          <span class="pl-dot"></span>
+          <div class="pl-text"><b>Ses analizi</b><span class="pl-sub">Hype haritası için</span></div>
+          <div class="pl-act">
+            <label class="btn text sm" title="Twitch/YouTube sohbet dökümü ekle: sohbetin patladığı anlar hype'a eklenir"><input type="file" id="chatInput" accept=".json,.txt,.csv,.log,.tsv" hidden><svg class="ic"><use href="#i-chat"/></svg>Sohbet</label>
+          </div>
+        </div>
+        <div class="pl-step" data-step="transcript">
+          <span class="pl-dot"></span>
+          <div class="pl-text"><b>Transkript</b><span class="pl-sub">Kelime zamanlı yazıya dökme</span></div>
+          <div class="pl-act">
+            <button class="btn tonal sm" id="txBtn"><svg class="ic"><use href="#i-mic"/></svg>Yazıya dök</button>
+            <label class="btn text sm" title="SRT, VTT veya JSON altyazı dosyası içe aktar"><input type="file" id="subInput" accept=".srt,.vtt,.json,text/vtt" hidden>Dosyadan</label>
+          </div>
+        </div>
+        <div class="pl-step" data-step="ai">
+          <span class="pl-dot"></span>
+          <div class="pl-text"><b>Klipleri bul</b><span class="pl-sub" id="aiSub">AI ile ya da ses tepkilerinden</span></div>
+          <div class="pl-act">
+            <button class="btn filled sm" id="aiBtn"><svg class="ic"><use href="#i-spark"/></svg>AI ile bul</button>
+            <button class="btn text sm" id="hypeBtn" title="API anahtarı gerekmez"><svg class="ic"><use href="#i-wave"/></svg>Sesten</button>
+          </div>
+        </div>
+        <div class="ai-query">
+          <svg class="ic sm"><use href="#i-search"/></svg>
+          <input id="aiQuery" placeholder="İstersen ne aradığını yaz: komik anlar, öğretici kısımlar…" aria-label="AI'ya ne arayacağını söyle">
+        </div>
+        <div class="pl-progress" id="plProgress" hidden>
+          <div class="bar"><i id="plBar"></i></div>
+          <div class="pl-progress-row"><span id="plLabel">Hazırlanıyor</span><button class="btn text sm" id="plCancel">İptal</button></div>
+        </div>
+      </div>
+
+      <div class="clips-head">
+        <h2>Klipler <span class="count" id="clipCount">0</span></h2>
+        <button class="btn text sm" id="montageBtn" title="En yüksek puanlı anlardan tek bir montaj videosu" hidden><svg class="ic"><use href="#i-film"/></svg>Montaj</button>
+        <div class="seg sm" role="group" aria-label="Sırala">
+          <button class="on" data-sort="score">Puan</button><button data-sort="time">Zaman</button>
+        </div>
+      </div>
+      <ul class="clip-list" id="clipList"></ul>
+      <div class="empty clips-empty" id="clipsEmpty">
+        <svg class="ic xl"><use href="#i-film"/></svg>
+        <p>Klipler burada görünecek. AI'ya buldur, sesten hype anlarını çıkar ya da oynatıcıda <kbd>I</kbd> ve <kbd>O</kbd> ile kendin işaretle.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+
+<nav class="m-nav" id="mNav" aria-label="Çalışma alanı bölümleri">
+  <button data-mtab="video" class="on"><span class="m-ind"><svg class="ic"><use href="#i-film"/></svg></span>Video</button>
+  <button data-mtab="clips"><span class="m-ind"><svg class="ic"><use href="#i-scissors"/></svg><em id="mClipBadge" hidden>0</em></span>Klipler</button>
+  <button data-mtab="text"><span class="m-ind"><svg class="ic"><use href="#i-text"/></svg></span>Metin</button>
+</nav>
+
+<!-- ============ KLİP EDİTÖRÜ ============ -->
+<section id="editor" class="view editor" data-view="editor" hidden aria-label="Klip editörü">
+  <header class="ed-bar">
+    <button class="btn icon" id="edBack" aria-label="Kliplere dön"><svg class="ic"><use href="#i-back"/></svg></button>
+    <input class="title-input" id="edTitle" aria-label="Klip başlığı" spellcheck="false">
+    <span class="score-pill" id="edScore"></span>
+    <div class="spacer"></div>
+    <button class="btn icon" id="edUndo" aria-label="Geri al (Ctrl+Z)" title="Geri al (Ctrl+Z)" disabled><svg class="ic"><use href="#i-undo"/></svg></button>
+    <button class="btn icon" id="edRedo" aria-label="Yinele (Ctrl+Shift+Z)" title="Yinele (Ctrl+Shift+Z)" disabled><svg class="ic"><use href="#i-redo"/></svg></button>
+    <button class="btn icon" data-open-keys aria-label="Klavye kısayolları (?)" title="Klavye kısayolları (?)"><svg class="ic"><use href="#i-kbd"/></svg></button>
+    <button class="btn icon" id="edPrev" aria-label="Önceki klip" title="Önceki klip"><svg class="ic" style="transform:rotate(90deg)"><use href="#i-back"/></svg></button>
+    <button class="btn icon" id="edNext" aria-label="Sonraki klip" title="Sonraki klip"><svg class="ic" style="transform:rotate(-90deg)"><use href="#i-back"/></svg></button>
+    <button class="btn filled" id="edExport"><svg class="ic"><use href="#i-download"/></svg><span>Dışa aktar</span></button>
+  </header>
+
+  <div class="ed-grid">
+    <div class="stage">
+      <div class="phone">
+        <canvas id="edCanvas" width="540" height="960"></canvas>
+        <button class="stage-play" id="edPlayBig" aria-label="Oynat"><svg class="ic xl"><use href="#i-play"/></svg></button>
+      </div>
+      <div class="stage-ctrl">
+        <button class="btn icon" id="edPlay" aria-label="Oynat/duraklat"><svg class="ic"><use href="#i-play"/></svg></button>
+        <span class="tc" id="edTc">0:00 / 0:00</span>
+        <button class="btn icon" id="edMute" aria-label="Sesi kapat/aç"><svg class="ic"><use href="#i-volume"/></svg></button>
+        <span class="divider"></span>
+        <div class="seg sm" id="safeZone" role="group" aria-label="Platform güvenli alanı" title="Platform düğmelerinin kapattığı alanları göster">
+          <button data-v="" class="on">Alan yok</button><button data-v="tiktok">TikTok</button><button data-v="shorts">Shorts</button><button data-v="reels">Reels</button>
+        </div>
+      </div>
+      <video id="edVideo" playsinline preload="auto" hidden></video>
+    </div>
+
+    <aside class="inspector">
+      <div class="tabs" role="tablist">
+        <button role="tab" class="on" data-tab="layout">Düzen</button>
+        <button role="tab" data-tab="captions">Altyazı</button>
+        <button role="tab" data-tab="words">Metin</button>
+        <button role="tab" data-tab="overlay">Kanca</button>
+        <button role="tab" data-tab="audio">Ses</button>
+        <button role="tab" data-tab="share">Paylaşım</button>
+      </div>
+
+      <div class="tab-panel" data-panel="layout">
+        <div class="field"><label>Format</label><div class="seg" id="ratioSeg"><button data-v="9:16">9:16 Shorts</button><button data-v="4:5">4:5 Akış</button><button data-v="1:1">1:1 Kare</button></div></div>
+        <div class="layout-grid" id="layoutGrid"></div>
+        <div data-show="fill" class="track-box">
+          <label class="switch"><input type="checkbox" id="trackOn"><span></span><span>Otomatik kadraj <small class="muted">Görüntüdeki hareketi takip edip konuşan kişiyi ortalar</small></span></label>
+        </div>
+        <div class="field" data-show="split"><label>Kamera yüksekliği <output id="splitRatioOut"></output></label><input type="range" id="splitRatio" min="0.25" max="0.6" step="0.01"></div>
+        <label class="switch" data-show="split"><input type="checkbox" id="swap"><span></span>Kamerayı alta al</label>
+        <div class="field" data-show="fill pip split fit split3"><label>Yakınlaştırma <output id="zoomOut"></output></label><input type="range" id="zoom" min="1" max="2.5" step="0.01"></div>
+        <div class="field" data-show="fill pip split split3"><label>Yatay kaydırma</label><input type="range" id="focusX" min="0" max="1" step="0.005"></div>
+        <div class="field" data-show="fill pip split fit split3"><label>Dikey kaydırma</label><input type="range" id="focusY" min="0" max="1" step="0.005"></div>
+        <div class="field" data-show="pip"><label>Kamera konumu</label>
+          <div class="seg" id="pipPos"><button data-v="tl">Sol üst</button><button data-v="tr">Sağ üst</button><button data-v="bl">Sol alt</button><button data-v="br">Sağ alt</button></div>
+        </div>
+        <div class="field" data-show="pip"><label>Kamera boyutu</label><input type="range" id="pipSize" min="0.25" max="0.6" step="0.01"></div>
+        <label class="switch"><input type="checkbox" id="autoZoom"><span></span><span>Otomatik zoom <small class="muted">Vurgulu kelimelerde ve tepki anlarında yumuşakça yakınlaşır</small></span></label>
+        <div class="field" id="autoZoomRow"><label>Zoom gücü <output id="autoZoomAmtOut"></output></label><input type="range" id="autoZoomAmt" min="0.04" max="0.3" step="0.01"></div>
+        <div class="field"><label>Vurgu rengi</label><div class="swatches" id="accentSw"></div></div>
+        <label class="switch"><input type="checkbox" id="jumpcut"><span></span><span>Sessiz boşlukları kes <small class="muted">Otomatik jump-cut, kliple daha akıcı olur</small></span></label>
+        <button class="btn outlined sm" id="framingFromEd"><svg class="ic"><use href="#i-crop"/></svg>Facecam ve içerik alanını değiştir</button>
+      </div>
+
+      <div class="tab-panel" data-panel="captions" hidden>
+        <label class="switch"><input type="checkbox" id="capOn"><span></span>Altyazıları göster</label>
+        <div class="preset-grid" id="presetGrid"></div>
+        <div class="field"><label>Yazı tipi</label><select id="capFont"></select></div>
+        <div class="field two">
+          <div><label>Boyut <output id="capSizeOut"></output></label><input type="range" id="capSize" min="36" max="160" step="1"></div>
+          <div><label>Satırdaki kelime <output id="capWordsOut"></output></label><input type="range" id="capWords" min="1" max="8" step="1"></div>
+        </div>
+        <div class="field"><label>Dikey konum</label><input type="range" id="capY" min="0.1" max="0.92" step="0.005"></div>
+        <div class="field colors">
+          <label class="color"><input type="color" id="capColor"><span>Metin</span></label>
+          <label class="color"><input type="color" id="capHi"><span>Aktif kelime</span></label>
+          <label class="color"><input type="color" id="capHi2"><span>Vurgu</span></label>
+          <label class="color"><input type="color" id="capStroke"><span>Kontur</span></label>
+          <label class="color"><input type="color" id="capBox"><span>Kutu</span></label>
+        </div>
+        <div class="field"><label>Kontur kalınlığı <output id="capStrokeWOut"></output></label><input type="range" id="capStrokeW" min="0" max="22" step="1"></div>
+        <div class="field"><label>Animasyon</label>
+          <div class="seg" id="capAnim"><button data-v="pop">Pop</button><button data-v="bounce">Zıplama</button><button data-v="none">Yok</button></div>
+        </div>
+        <label class="switch"><input type="checkbox" id="capBig"><span></span><span>Kinetik vurgu <small class="muted">Vurgulu kelimeler daha büyük ve ikinci yazı tipiyle</small></span></label>
+        <label class="switch"><input type="checkbox" id="capUpper"><span></span>BÜYÜK HARF</label>
+        <label class="switch"><input type="checkbox" id="capEmoji"><span></span>Vurgu kelimelerinde emoji</label>
+        <button class="btn outlined sm" id="capApplyAll"><svg class="ic"><use href="#i-copy"/></svg>Bu stili tüm kliplere uygula</button>
+      </div>
+
+      <div class="tab-panel" data-panel="words" hidden>
+        <label class="switch"><input type="checkbox" id="fillersOn"><span></span><span>Dolgu kelimelerini kes <small class="muted">"ııı, eee, hmm, um" gibi sesleri videodan ve altyazıdan çıkarır</small></span></label>
+        <p class="hint">Kelimeye tıklayıp düzelt. Yıldız ile vurgula, göz ile altyazıdan gizle. Değişiklik sadece bu klibin altyazısını etkiler.</p>
+        <div class="words" id="wordsEd"></div>
+        <div class="row"><button class="btn text sm" id="wordsReset"><svg class="ic"><use href="#i-refresh"/></svg>Transkripte geri dön</button></div>
+        <div class="translate">
+          <label for="trLang">Altyazıyı başka dile çevir</label>
+          <div class="copy-row">
+            <select id="trLang"><option value="İngilizce">İngilizce</option><option value="Türkçe">Türkçe</option><option value="Almanca">Almanca</option><option value="İspanyolca">İspanyolca</option><option value="Fransızca">Fransızca</option><option value="Arapça">Arapça</option><option value="Rusça">Rusça</option><option value="Portekizce">Portekizce</option><option value="Azerbaycan Türkçesi">Azerbaycan Türkçesi</option></select>
+            <button class="btn tonal sm" id="trBtn"><svg class="ic"><use href="#i-globe"/></svg>Çevir</button>
+          </div>
+          <small class="muted">AI çeviriyi kelime zamanlarına yayar. Geri almak için "Transkripte geri dön".</small>
+        </div>
+      </div>
+
+      <div class="tab-panel" data-panel="overlay" hidden>
+        <label class="switch"><input type="checkbox" id="hookOn"><span></span>Kanca kartını göster</label>
+        <div class="field"><label>Kanca metni</label><textarea id="hookText" rows="2" maxlength="90" placeholder="Örn. Bunu kimse beklemiyordu"></textarea></div>
+        <div class="row hook-ai">
+          <button class="btn filled sm" id="hookDesignBtn"><svg class="ic"><use href="#i-spark"/></svg>AI tasarlasın</button>
+          <button class="btn tonal sm" id="hookIdeasBtn"><svg class="ic"><use href="#i-spark"/></svg>5 metin öner</button>
+        </div>
+        <div class="chips" id="hookIdeas"></div>
+        <h3 class="sub">Stil</h3>
+        <div class="preset-grid hook-presets" id="hookPresetGrid"></div>
+        <div class="field two">
+          <div><label for="hookEmoji">Emoji</label><input id="hookEmoji" maxlength="4" placeholder="Yok"></div>
+          <div><label for="hookFont">Yazı tipi</label><select id="hookFont"></select></div>
+        </div>
+        <div class="field colors hook-colors">
+          <label class="color"><input type="color" id="hookBg"><span>Arka plan</span></label>
+          <label class="color"><input type="color" id="hookFg"><span>Yazı</span></label>
+          <button class="btn text sm" id="hookNoBg" title="Arka planı kaldır">Arka plansız</button>
+          <button class="btn text sm" id="hookResetColors" title="Stilin renklerine dön">Stil renkleri</button>
+        </div>
+        <div class="field two">
+          <div><label>Boyut <output id="hookSizeOut"></output></label><input type="range" id="hookSize" min="30" max="96" step="1"></div>
+          <div><label>Eğim <output id="hookTiltOut"></output></label><input type="range" id="hookTilt" min="-8" max="8" step="0.5"></div>
+        </div>
+        <div class="field two">
+          <div><label>Köşe <output id="hookRadiusOut"></output></label><input type="range" id="hookRadius" min="0" max="60" step="1"></div>
+          <div><label>Süre <output id="hookDurOut"></output></label><input type="range" id="hookDur" min="1.5" max="8" step="0.1"></div>
+        </div>
+        <div class="field"><label>Konum</label><input type="range" id="hookY" min="0.06" max="0.85" step="0.005"></div>
+        <div class="field"><label>Giriş animasyonu</label><div class="seg" id="hookAnim"></div></div>
+        <label class="switch"><input type="checkbox" id="hookUpper"><span></span>BÜYÜK HARF</label>
+        <label class="switch"><input type="checkbox" id="hookAuto"><span></span><span>Yeni kliplerde AI tasarlasın <small class="muted">AI klip bulurken kancanın stilini içeriğe göre kendisi seçer</small></span></label>
+        <button class="btn outlined sm" id="hookApplyAll"><svg class="ic"><use href="#i-copy"/></svg>Bu kanca stilini tüm kliplere uygula</button>
+
+        <h3 class="sub">Teaser girişi</h3>
+        <label class="switch"><input type="checkbox" id="teaserOn"><span></span><span>En vurucu 3 anı başta göster <small class="muted">Klip, flaş geçişli kısa bir ön gösterimle açılır</small></span></label>
+
+        <h3 class="sub">Logo ve kanal adı</h3>
+        <div class="music" id="logoBox"></div>
+        <div id="logoCtrls">
+          <div class="field"><label>Konum</label><div class="pos-grid" id="logoPos"></div></div>
+          <div class="field two">
+            <div><label>Boyut <output id="logoSizeOut"></output></label><input type="range" id="logoSize" min="0.06" max="0.45" step="0.01"></div>
+            <div><label>Saydamlık <output id="logoOpOut"></output></label><input type="range" id="logoOp" min="0.2" max="1" step="0.05"></div>
+          </div>
+        </div>
+        <div class="field"><label>Kanal adı / filigran</label><input id="wmText" placeholder="@kanaladi"></div>
+        <label class="switch"><input type="checkbox" id="progOn"><span></span>Alt ilerleme çubuğu</label>
+        <button class="btn outlined sm" id="brandApplyAll"><svg class="ic"><use href="#i-copy"/></svg>Logo ve kanal adını tüm kliplere uygula</button>
+      </div>
+
+      <div class="tab-panel" data-panel="audio" hidden>
+        <h3 class="sub">Ses kalitesi</h3>
+        <label class="switch"><input type="checkbox" id="cleanOn"><span></span><span>Sesi iyileştir <small class="muted">Uğultuyu keser, konuşmayı netleştirir ve ses seviyesini dengeler</small></span></label>
+        <h3 class="sub">Ses efektleri</h3>
+        <label class="switch"><input type="checkbox" id="sfxOn"><span></span><span>Pop efekti <small class="muted">Vurgulu (yıldızlı) kelimelerde kısa bir "pop" sesi</small></span></label>
+        <div class="field" id="sfxVolRow"><label>Efekt sesi <output id="sfxVolOut"></output></label><input type="range" id="sfxVol" min="0.1" max="1" step="0.05"></div>
+        <h3 class="sub">Arka plan müziği</h3>
+        <div class="music" id="musicBox"></div>
+        <div id="musicCtrls">
+          <div class="field"><label>Müzik sesi <output id="musicVolOut"></output></label><input type="range" id="musicVol" min="0.02" max="0.6" step="0.01"></div>
+          <label class="switch"><input type="checkbox" id="musicDuck"><span></span><span>Konuşma olunca müziği kıs <small class="muted">Ses netliği için önerilir</small></span></label>
+        </div>
+        <p class="note">Telifsiz müzik kullan; telifli şarkılar TikTok ve YouTube'da sessize alınabilir. YouTube Ses Kitaplığı iyi bir kaynak.</p>
+        <button class="btn outlined sm" id="audioApplyAll"><svg class="ic"><use href="#i-copy"/></svg>Bu ses ayarlarını tüm kliplere uygula</button>
+      </div>
+
+      <div class="tab-panel" data-panel="share" hidden>
+        <div class="reason" id="edReason"></div>
+        <div class="field"><label>Başlık</label><div class="copy-row"><input id="shTitle"><button class="btn icon sm" data-copy="shTitle" aria-label="Kopyala"><svg class="ic"><use href="#i-copy"/></svg></button></div></div>
+        <div class="field"><label>Açıklama</label><div class="copy-row"><textarea id="shDesc" rows="3"></textarea><button class="btn icon sm" data-copy="shDesc" aria-label="Kopyala"><svg class="ic"><use href="#i-copy"/></svg></button></div></div>
+        <div class="field"><label>Etiketler</label><div class="copy-row"><input id="shTags"><button class="btn icon sm" data-copy="shTags" aria-label="Kopyala"><svg class="ic"><use href="#i-copy"/></svg></button></div></div>
+        <div class="row">
+          <button class="btn tonal sm" id="regenMeta"><svg class="ic"><use href="#i-spark"/></svg>AI ile yeniden yaz</button>
+          <button class="btn text sm" id="srtBtn"><svg class="ic"><use href="#i-file"/></svg>SRT indir</button>
+          <button class="btn text sm" id="coverBtn" title="Önizlemedeki kareyi kanca metniyle PNG olarak indir"><svg class="ic"><use href="#i-image"/></svg>Kapak görseli</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="trim">
+    <div class="trim-head">
+      <span class="tc" id="trimInfo"></span>
+      <div class="spacer"></div>
+      <button class="btn text sm" id="nudgeStartL" title="Başlangıcı 1 sn geri">−1 sn</button>
+      <span class="muted sm">başlangıç</span>
+      <button class="btn text sm" id="nudgeStartR" title="Başlangıcı 1 sn ileri">+1 sn</button>
+      <span class="divider"></span>
+      <button class="btn text sm" id="nudgeEndL" title="Bitişi 1 sn geri">−1 sn</button>
+      <span class="muted sm">bitiş</span>
+      <button class="btn text sm" id="nudgeEndR" title="Bitişi 1 sn ileri">+1 sn</button>
+    </div>
+    <div class="seg-list" id="segList" hidden></div>
+    <div class="trim-track" id="trimTrack">
+      <canvas id="trimCanvas"></canvas>
+      <div class="trim-sel" id="trimSel"><span class="handle l" id="hL" tabindex="0" aria-label="Başlangıç tutamacı"></span><span class="handle r" id="hR" tabindex="0" aria-label="Bitiş tutamacı"></span></div>
+      <div class="trim-head-line" id="trimPlayhead"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ KADRAJ DİYALOĞU ============ -->
+<dialog id="framingDlg" class="dlg wide">
+  <form method="dialog" class="dlg-head">
+    <h2>Kadraj</h2>
+    <p class="muted">Kutuları sürükleyip köşelerden boyutlandır. Facecam yoksa kapat; klipler tam ekran düzene geçer.</p>
+    <button class="btn icon" value="cancel" aria-label="Kapat"><svg class="ic"><use href="#i-close"/></svg></button>
+  </form>
+  <div class="framing">
+    <div class="frame-stage" id="frameStage">
+      <canvas id="frameCanvas"></canvas>
+      <div class="fbox content" id="boxContent" data-box="content"><span class="ftag">İçerik / oyun</span><i class="fh tl"></i><i class="fh tr"></i><i class="fh bl"></i><i class="fh br"></i></div>
+      <div class="fbox cam" id="boxCam" data-box="cam"><span class="ftag">Facecam</span><i class="fh tl"></i><i class="fh tr"></i><i class="fh bl"></i><i class="fh br"></i></div>
+    </div>
+    <div class="framing-side">
+      <label class="switch"><input type="checkbox" id="hasCam" checked><span></span>Videoda facecam var</label>
+      <div class="field"><label>Kare</label><input type="range" id="frameScrub" min="0" max="1" step="0.001"></div>
+      <div class="mini-prev"><canvas id="framePrev" width="216" height="384"></canvas><span class="muted sm">Önizleme</span></div>
+      <div class="row">
+        <button class="btn text sm" id="frameReset">Sıfırla</button>
+      </div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <label class="switch sm"><input type="checkbox" id="frameApplyAll" checked><span></span>Mevcut kliplere de uygula</label>
+    <div class="spacer"></div>
+    <button class="btn text" data-close>Vazgeç</button>
+    <button class="btn filled" id="frameSave" autofocus><svg class="ic"><use href="#i-check"/></svg>Kaydet</button>
+  </div>
+</dialog>
+
+<!-- ============ AYARLAR ============ -->
+<dialog id="settingsDlg" class="dlg">
+  <form method="dialog" class="dlg-head">
+    <h2>Ayarlar</h2>
+    <button class="btn icon" value="cancel" aria-label="Kapat"><svg class="ic"><use href="#i-close"/></svg></button>
+  </form>
+  <div class="settings">
+    <nav class="set-nav" id="setNav">
+      <button class="on" data-sec="ai"><svg class="ic"><use href="#i-spark"/></svg>AI analizi</button>
+      <button data-sec="stt"><svg class="ic"><use href="#i-mic"/></svg>Transkript</button>
+      <button data-sec="clips"><svg class="ic"><use href="#i-scissors"/></svg>Klip tercihleri</button>
+      <button data-sec="export"><svg class="ic"><use href="#i-download"/></svg>Dışa aktarma</button>
+      <button data-sec="look"><svg class="ic"><use href="#i-eye"/></svg>Görünüm</button>
+    </nav>
+    <div class="set-body">
+      <section data-sec="ai">
+        <div class="field"><label for="llmProvider">Sağlayıcı</label><select id="llmProvider"></select></div>
+        <div class="field">
+          <label for="llmKey">API anahtarı <a class="key-link" id="llmKeyLink" target="_blank" rel="noopener">Anahtar al</a></label>
+          <div class="secret"><input id="llmKey" type="password" autocomplete="off" spellcheck="false" placeholder="Anahtarını yapıştır"><button class="btn icon sm" data-reveal="llmKey" aria-label="Göster"><svg class="ic"><use href="#i-eye"/></svg></button></div>
+        </div>
+        <div class="field" id="llmBaseRow"><label for="llmBase">Temel adres (base URL)</label><input id="llmBase" placeholder="https://.../v1"></div>
+        <label class="switch" id="geminiAutoRow"><input type="checkbox" id="geminiAuto"><span></span><span>Otomatik model (önerilen) <small class="muted">Çalışan Gemini modelini kendisi bulur; ücretsiz kota dolunca sıradakini dener</small></span></label>
+        <div class="field" id="llmModelRow">
+          <label for="llmModel">Model</label>
+          <div class="copy-row"><input id="llmModel" list="llmModels" placeholder="Varsayılan"><datalist id="llmModels"></datalist><button class="btn tonal sm" id="fetchModels">Modelleri getir</button></div>
+        </div>
+        <div class="row"><button class="btn outlined sm" id="testLlm"><svg class="ic"><use href="#i-check"/></svg>Bağlantıyı test et</button><span class="muted sm" id="testOut"></span></div>
+        <button class="btn tonal sm guide-open" id="openGuide"><svg class="ic"><use href="#i-key"/></svg>Adım adım kurulum rehberini aç</button>
+        <p class="note"><svg class="ic sm"><use href="#i-lock"/></svg>Anahtarlar yalnızca bu tarayıcıda saklanır ve doğrudan sağlayıcıya gönderilir. AI'ya sadece transkript metni gider; video ve ses gitmez.</p>
+      </section>
+      <section data-sec="stt" hidden>
+        <div class="field"><label for="sttProvider">Yazıya dökme servisi</label><select id="sttProvider"></select></div>
+        <div class="field"><label for="sttKey">API anahtarı</label>
+          <div class="secret"><input id="sttKey" type="password" autocomplete="off" spellcheck="false"><button class="btn icon sm" data-reveal="sttKey" aria-label="Göster"><svg class="ic"><use href="#i-eye"/></svg></button></div>
+          <small class="muted" id="sttKeyHint"></small>
+        </div>
+        <div class="field" id="sttBaseRow"><label for="sttBase">Temel adres (base URL)</label><input id="sttBase" placeholder="https://.../v1"></div>
+        <div class="field two">
+          <div><label for="sttModel">Model</label><input id="sttModel" placeholder="Varsayılan"></div>
+          <div><label for="sttLang">Konuşma dili</label>
+            <select id="sttLang"><option value="tr">Türkçe</option><option value="en">İngilizce</option><option value="de">Almanca</option><option value="es">İspanyolca</option><option value="fr">Fransızca</option><option value="ar">Arapça</option><option value="ru">Rusça</option><option value="pt">Portekizce</option><option value="it">İtalyanca</option><option value="az">Azerice</option><option value="ja">Japonca</option><option value="ko">Korece</option><option value="auto">Otomatik</option></select>
+          </div>
+        </div>
+        <p class="note">Ses, 16 kHz mono parçalar halinde yalnızca transkript için seçtiğin servise gönderilir. Groq'un ücretsiz katmanı çoğu yayın için yeterlidir.</p>
+      </section>
+      <section data-sec="clips" hidden>
+        <div class="field two">
+          <div><label for="clipMin">En kısa (sn)</label><input type="number" id="clipMin" min="5" max="180"></div>
+          <div><label for="clipMax">En uzun (sn)</label><input type="number" id="clipMax" min="10" max="180"></div>
+        </div>
+        <div class="field two">
+          <div><label for="clipCount">Klip sayısı</label><input type="number" id="clipCount" min="1" max="40"></div>
+          <div><label for="titleLang">Başlık dili</label><select id="titleLang"><option value="tr">Türkçe</option><option value="en">İngilizce</option><option value="auto">Transkript dili</option></select></div>
+        </div>
+        <div class="field"><label for="contentType">İçerik türü</label><select id="contentType"></select></div>
+        <div class="field"><label for="customPrompt">AI'ya ek talimat</label><textarea id="customPrompt" rows="3" placeholder="Örn. Sadece clutch anları ve komik tepkileri seç, küfürlü kısımları atla."></textarea></div>
+      </section>
+      <section data-sec="export" hidden>
+        <div class="field"><label>Çözünürlük</label><div class="seg" id="exportRes"><button data-v="720">720×1280</button><button data-v="1080">1080×1920</button><button data-v="1440">1440×2560</button></div></div>
+        <div class="field"><label>Kare hızı</label><div class="seg" id="exportFps"><button data-v="30">30 fps</button><button data-v="60">60 fps</button></div></div>
+        <div class="field"><label>Biçim</label><div class="seg" id="exportFormat"><button data-v="auto">MP4 öncelikli</button><button data-v="webm">WebM</button></div><small class="muted" id="fmtHint"></small></div>
+        <div class="field"><label for="brandHandle">Varsayılan kanal adı (filigran)</label><input id="brandHandle" placeholder="@kanaladi"></div>
+        <p class="note">Dışa aktarma gerçek zamanlı yapılır: 45 saniyelik klip yaklaşık 45 saniye sürer. Bu sürede sekmeyi açık tut.</p>
+      </section>
+      <section data-sec="look" hidden>
+        <div class="field"><label>Arayüz</label>
+          <div class="seg" id="layoutMode"><button data-v="auto">Otomatik</button><button data-v="mobile">Mobil</button><button data-v="desktop">Masaüstü</button></div>
+          <small class="muted">Otomatik: telefonda ve dar pencerelerde mobil düzene geçer.</small>
+        </div>
+        <div class="field"><label>Tema</label>
+          <div class="themes" id="themeGrid" role="radiogroup" aria-label="Tema"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</dialog>
+
+<!-- ============ API KURULUM REHBERİ ============ -->
+<dialog id="guideDlg" class="dlg guide" aria-labelledby="guideTitle">
+  <div class="g-ask" id="gAsk">
+    <div class="g-badge"><svg class="ic xl"><use href="#i-key"/></svg></div>
+    <h2 id="guideTitle">AI bağlantısını birlikte kuralım mı?</h2>
+    <p class="muted">Klipleri otomatik bulmak için iki ücretsiz API anahtarı gerekiyor. Nereden alınacağını ve nereye yapıştırılacağını adım adım gösteririm; yaklaşık 3 dakika sürer.</p>
+    <label class="switch sm g-never"><input type="checkbox" id="guideNever"><span></span>Bir daha gösterme</label>
+    <div class="g-ask-actions">
+      <button class="btn text" id="guideLater">Şimdi değil</button>
+      <button class="btn filled" id="guideYes" autofocus>Evet, göster</button>
+    </div>
+  </div>
+  <div class="g-steps" id="gSteps" hidden>
+    <div class="g-top">
+      <ol class="g-dots" id="gDots" aria-label="Adımlar"></ol>
+      <button class="btn icon" id="guideClose" aria-label="Rehberi kapat"><svg class="ic"><use href="#i-close"/></svg></button>
+    </div>
+    <div class="g-body" id="gBody"></div>
+    <div class="g-foot">
+      <button class="btn text" id="gBack">Geri</button>
+      <div class="spacer"></div>
+      <button class="btn text" id="gSkip">Bu adımı atla</button>
+      <button class="btn filled" id="gNext">İleri</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="langDlg" class="dlg lang-dlg" aria-labelledby="langTitle">
+  <form method="dialog" class="dlg-head">
+    <h2 id="langTitle">Videoda hangi dil konuşuluyor?</h2>
+    <p class="muted">Doğru dili seçmek yazıya dökmeyi ve altyazıları çok daha isabetli yapar.</p>
+    <button class="btn icon" value="cancel" aria-label="Kapat"><svg class="ic"><use href="#i-close"/></svg></button>
+  </form>
+  <div class="lang-body">
+    <div class="lang-grid" id="langGrid" role="radiogroup" aria-label="Konuşma dili"></div>
+    <div class="field">
+      <label>Başlık, kanca ve açıklamalar</label>
+      <div class="seg" id="langTitleSeg"><button data-v="tr">Türkçe</button><button data-v="en">İngilizce</button><button data-v="auto">Konuşma dilinde</button></div>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <div class="spacer"></div>
+    <button class="btn text" id="langCancel">Vazgeç</button>
+    <button class="btn filled" id="langOk"><svg class="ic"><use href="#i-mic"/></svg>Yazıya dök</button>
+  </div>
+</dialog>
+
+<dialog id="chaptersDlg" class="dlg">
+  <form method="dialog" class="dlg-head">
+    <h2>YouTube bölümleri</h2>
+    <p class="muted">Uzun yayını YouTube'a yüklerken açıklamaya yapıştır; YouTube zaman damgalarını bölüm olarak gösterir.</p>
+    <button class="btn icon" value="cancel" aria-label="Kapat"><svg class="ic"><use href="#i-close"/></svg></button>
+  </form>
+  <div class="chapters-body" id="chaptersBody"></div>
+  <div class="dlg-foot">
+    <button class="btn text" id="chaptersRegen"><svg class="ic"><use href="#i-refresh"/></svg>Yeniden yaz</button>
+    <div class="spacer"></div>
+    <button class="btn filled" id="chaptersCopy"><svg class="ic"><use href="#i-copy"/></svg>Açıklamayı kopyala</button>
+  </div>
+</dialog>
+
+<dialog id="keysDlg" class="dlg keys-dlg">
+  <form method="dialog" class="dlg-head"><h2>Klavye kısayolları</h2><button class="btn icon" value="cancel" aria-label="Kapat"><svg class="ic"><use href="#i-close"/></svg></button></form>
+  <div class="keys">
+    <section><h3>Çalışma alanı</h3>
+      <dl><dt><kbd>Boşluk</kbd></dt><dd>Oynat / duraklat</dd><dt><kbd>I</kbd> <kbd>O</kbd></dt><dd>Klip başlangıcı / bitişi işaretle</dd><dt><kbd>Enter</kbd></dt><dd>İşaretli aralıktan klip yap</dd><dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>5 sn geri / ileri (Shift ile 30 sn)</dd><dt><kbd>Esc</kbd></dt><dd>İşaretleri temizle</dd></dl>
+    </section>
+    <section><h3>Klip editörü</h3>
+      <dl><dt><kbd>Boşluk</kbd></dt><dd>Oynat / duraklat</dd><dt><kbd>Ctrl</kbd> <kbd>Z</kbd></dt><dd>Geri al</dd><dt><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Z</kbd></dt><dd>Yinele</dd><dt><kbd>Alt</kbd> <kbd>←</kbd> <kbd>→</kbd></dt><dd>Önceki / sonraki klip</dd><dt><kbd>E</kbd></dt><dd>Dışa aktar</dd><dt><kbd>Esc</kbd></dt><dd>Kliplere dön</dd></dl>
+    </section>
+    <section><h3>Her yerde</h3><dl><dt><kbd>?</kbd></dt><dd>Bu listeyi aç</dd></dl></section>
+  </div>
+</dialog>
+
+<!-- Dışa aktarma kuyruğu -->
+<aside class="queue" id="queue" hidden aria-live="polite">
+  <div class="queue-head" id="queueHead" title="Aç / kapat"><b>Dışa aktarma</b><span class="muted sm" id="queueSum"></span><div class="spacer"></div><button class="btn icon sm" id="queueMin" aria-label="Küçült"><svg class="ic"><use href="#i-close"/></svg></button></div>
+  <ul class="queue-list" id="queueList"></ul>
+</aside>
+
+<div class="snack" id="snack" role="status" aria-live="polite"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

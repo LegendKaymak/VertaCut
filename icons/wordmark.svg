@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF8A3D"/><stop offset="1" stop-color="#FF2D6F"/></linearGradient>
+    <mask id="m"><rect width="512" height="512" fill="#fff"/><path d="M80 250 L440 170" stroke="#000" stroke-width="22"/></mask>
+  </defs>
+  <rect width="1200" height="320" fill="#141012"/>
+  <g transform="translate(64 64) scale(0.375)">
+    <rect width="512" height="512" rx="116" fill="url(#g)"/>
+    <path d="M150 150 H362 L256 364 Z" fill="#fff" stroke="#fff" stroke-width="44" stroke-linejoin="round" mask="url(#m)"/>
+  </g>
+  <text x="300" y="196" font-family="Allo, Allo ExtraBold, Helvetica, Arial, sans-serif" font-weight="800" font-size="128" letter-spacing="-2" fill="#F7EFF1">VertaCut</text>
+</svg>
