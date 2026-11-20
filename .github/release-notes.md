@@ -8,7 +8,7 @@
 - Each of these can be turned on or off in Settings → Features
 - 38 bug fixes (memory use on long streams, caption edits lost on trim, SRT timing, offline cache and more)
 
-**VertaCut by LegendKaymak** — **VertaCut by LegendKaymak** — turn long stream VODs into vertical 9:16 short clips, right in your browser.
+**VertaCut by LegendKaymak** — turn long stream VODs into vertical 9:16 short clips, right in your browser.
 
 ### Highlights
 - **AI clip finder** with your own API keys (Gemini, OpenAI, Anthropic, Groq, OpenRouter, xAI, DeepSeek, Ollama) — Gemini "Auto" mode tries working models automatically
