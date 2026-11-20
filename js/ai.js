@@ -7,7 +7,7 @@ export const LLM_PROVIDERS = {
   openai:     { label: 'OpenAI', base: 'https://api.openai.com/v1', model: 'gpt-4.1-mini', keyUrl: 'https://platform.openai.com/api-keys' },
   anthropic:  { label: 'Anthropic Claude', model: 'claude-sonnet-5-5', keyUrl: 'https://console.anthropic.com/settings/keys' },
   groq:       { label: 'Groq', base: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', keyUrl: 'https://console.groq.com/keys' },
-  openrouter: { label: 'OpenRouter', base: 'https://openrouter.ai/api/v1', model: 'google/gemini-2.5-flash', keyUrl: 'https://openrouter.ai/keys' },
+  openrouter: { label: 'OpenRouter', base: 'https://openrouter.ai/api/v1', model: 'free', keyUrl: 'https://openrouter.ai/keys' },
   xai:        { label: 'xAI Grok', base: 'https://api.x.ai/v1', model: 'grok-3-mini', keyUrl: 'https://console.x.ai' },
   deepseek:   { label: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat', keyUrl: 'https://platform.deepseek.com/api_keys' },
   ollama:     { label: 'Ollama (yerel)', base: 'http://localhost:11434/v1', model: 'llama3.1', noKey: true },
@@ -38,7 +38,9 @@ async function asJson(res) {
   if (!res.ok) {
     const msg = data?.error?.message || data?.error || data?.message || text.slice(0, 300) || res.statusText;
     const hint = res.status === 401 || res.status === 403 ? '. API anahtarını kontrol et.' : res.status === 429 ? '. Kota veya hız sınırı doldu, biraz bekleyip tekrar dene.' : res.status === 413 ? '. Dosya parçası çok büyük.' : '';
-    throw new AIError(`${res.status}: ${(typeof msg === 'string' ? msg : JSON.stringify(msg)).replace(/\.+\s*$/, '')}${hint || '.'}`);
+    const err = new AIError(`${res.status}: ${(typeof msg === 'string' ? msg : JSON.stringify(msg)).replace(/\.+\s*$/, '')}${hint || '.'}`);
+    err.status = res.status;
+    throw err;
   }
   return data ?? text;
 }
@@ -81,6 +83,63 @@ async function geminiGenerate(chosen, key, body, signal) {
     }
   }
   throw new AIError('Hiçbir Gemini modeli yanıt vermedi; ücretsiz kota dolmuş olabilir. Biraz bekleyip tekrar dene ya da başka bir AI seç. Son hata: ' + (lastErr?.message || ''));
+}
+
+// ------------------------------------------------------------------ OPENROUTER: ücretsiz modeller
+// "free" seçiliyken yalnızca ":free" modeller kullanılır; biri kotaya takılırsa sıradakine geçilir.
+const OR_BASE = 'https://openrouter.ai/api/v1';
+const OR_PREFER = [/deepseek/i, /qwen3|qwen-3/i, /llama-4|llama-3\.3-70b/i, /gemini|gemma-3-27b/i, /gpt-oss/i, /mistral|mixtral/i, /glm|kimi|nemotron/i];
+let orFreeCache = null, orWorking = null;
+export const lastOpenRouterModel = () => orWorking;
+const orFreeId = m => /:free$/.test(m.id) || (m.pricing && +m.pricing.prompt === 0 && +m.pricing.completion === 0 && !/^openrouter\//.test(m.id));
+
+export async function openRouterFreeModels(force = false) {
+  if (orFreeCache && !force) return orFreeCache;
+  let d;
+  try { d = await asJson(await fetch(`${OR_BASE}/models`)); } catch (e) { throw wrapNetwork(e, 'OpenRouter'); }
+  const textOnly = m => {
+    const a = m.architecture || {};
+    const out = a.output_modalities || (a.modality ? [a.modality.split('->')[1] || 'text'] : ['text']);
+    return out.join(',').includes('text') && !/image|audio/.test(out.join(','));
+  };
+  const score = m => { const i = OR_PREFER.findIndex(r => r.test(m.id)); return i < 0 ? OR_PREFER.length : i; };
+  orFreeCache = (d?.data || [])
+    .filter(m => orFreeId(m) && textOnly(m) && (m.context_length || 0) >= 32000)
+    .sort((a, b) => score(a) - score(b) || (b.context_length || 0) - (a.context_length || 0))
+    .map(m => m.id);
+  return orFreeCache;
+}
+
+async function openRouterRequest(model, key, body, signal) {
+  const res = await fetch(`${OR_BASE}/chat/completions`, {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}`, 'HTTP-Referer': location.origin, 'X-Title': 'VertaCut' },
+    body: JSON.stringify({ ...body, model })
+  });
+  const d = await asJson(res);
+  const out = d?.choices?.[0]?.message?.content || '';
+  if (!out) { const e = new AIError(`${model} boş yanıt döndürdü.`); e.status = 502; throw e; }
+  return out;
+}
+
+async function openRouterFree(key, body, signal) {
+  let list;
+  try { list = await openRouterFreeModels(); } catch (e) { if (e.name === 'AbortError') throw e; list = []; }
+  if (!list.length) throw new AIError('OpenRouter\'da şu anda kullanılabilir ücretsiz model bulunamadı. Biraz sonra tekrar dene ya da Ayarlar → AI\'dan bir model yaz.');
+  const order = (orWorking && list.includes(orWorking) ? [orWorking, ...list.filter(m => m !== orWorking)] : list).slice(0, 8);
+  let lastErr;
+  for (const m of order) {
+    try {
+      const out = await openRouterRequest(m, key, body, signal);
+      orWorking = m;
+      return out;
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      if (e.status === 401) throw e; // anahtar geçersiz
+      lastErr = e;
+    }
+  }
+  throw new AIError('Ücretsiz OpenRouter modellerinin hiçbiri şu an yanıt vermedi; günlük ücretsiz kota dolmuş olabilir. Biraz bekleyip tekrar dene. Son hata: ' + (lastErr?.message || ''));
 }
 
 // ------------------------------------------------------------------ STT
@@ -237,6 +296,9 @@ export async function chat(settings, system, user, { json = true, signal, maxTok
       if (!out) throw new AIError('Gemini boş yanıt döndürdü' + (d?.promptFeedback?.blockReason ? ` (${d.promptFeedback.blockReason})` : ''));
       return out;
     }
+    if (p === 'openrouter' && model === 'free') {
+      return await openRouterFree(key, { messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0.5, max_tokens: maxTokens }, signal);
+    }
     if (p === 'anthropic') {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST', signal,
@@ -273,6 +335,7 @@ export async function listModels(settings) {
       const d = await asJson(await fetch('https://api.anthropic.com/v1/models?limit=100', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' } }));
       return (d.data || []).map(m => m.id);
     }
+    if (p === 'openrouter') return await openRouterFreeModels(true);
     const base = (p === 'custom' || p === 'ollama' ? (settings.llmBaseUrl || def.base) : def.base).replace(/\/$/, '');
     const d = await asJson(await fetch(`${base}/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {} }));
     return (d.data || []).map(m => m.id).sort();

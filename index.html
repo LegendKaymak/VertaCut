@@ -490,7 +490,7 @@
           <div class="secret"><input id="llmKey" type="password" autocomplete="off" spellcheck="false" placeholder="Anahtarını yapıştır"><button class="btn icon sm" data-reveal="llmKey" aria-label="Göster"><svg class="ic"><use href="#i-eye"/></svg></button></div>
         </div>
         <div class="field" id="llmBaseRow"><label for="llmBase">Temel adres (base URL)</label><input id="llmBase" placeholder="https://.../v1"></div>
-        <label class="switch" id="geminiAutoRow"><input type="checkbox" id="geminiAuto"><span></span><span>Otomatik model (önerilen) <small class="muted">Çalışan Gemini modelini kendisi bulur; ücretsiz kota dolunca sıradakini dener</small></span></label>
+        <label class="switch" id="geminiAutoRow"><input type="checkbox" id="geminiAuto"><span></span><span id="autoModelText">Otomatik model (önerilen) <small class="muted">Çalışan Gemini modelini kendisi bulur; ücretsiz kota dolunca sıradakini dener</small></span></label>
         <div class="field" id="llmModelRow">
           <label for="llmModel">Model</label>
           <div class="copy-row"><input id="llmModel" list="llmModels" placeholder="Varsayılan"><datalist id="llmModels"></datalist><button class="btn tonal sm" id="fetchModels">Modelleri getir</button></div>

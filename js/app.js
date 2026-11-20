@@ -2,7 +2,8 @@
 import { $, $$, clamp, uid, fmtTime, fmtDur, fmtBytes, escapeHtml, debounce, download, safeName, sleep, parseTime } from './util.js';
 import { DB, loadSettings, saveSettings } from './db.js';
 import { extractAudio, computeEnergy, findHypeMoments, HOP, DEFAULT_FILLERS, isFiller } from './audio.js';
-import { transcribe, parseSubtitleFile, analyzeClips, regenerateMeta, suggestHooks, translateLines, designHook, youtubeChapters, listModels, testConnection, testKey, lastGeminiModel, LLM_PROVIDERS, STT_PROVIDERS, CONTENT_TYPES } from './ai.js';
+import { transcribe, parseSubtitleFile, analyzeClips, regenerateMeta, suggestHooks, translateLines, designHook, youtubeChapters, listModels, testConnection, testKey, lastGeminiModel, lastOpenRouterModel, LLM_PROVIDERS, STT_PROVIDERS, CONTENT_TYPES } from './ai.js';
+const AUTO_MODEL = { gemini: 'auto', openrouter: 'free' };
 import { Compositor, LAYOUTS, DEFAULT_REGIONS, clipWords, setLogoImage, hasLogoImage, ratioH } from './render.js';
 import { CAPTION_PRESETS, CAPTION_FONTS, defaultCaptionStyle, buildPages, drawCaptions } from './captions.js';
 import { playSfx, sfxEvents, crossed, duckFactor } from './sfx.js';
@@ -2195,12 +2196,16 @@ function syncLlmFields() {
   $('#llmBaseRow').hidden = !(p === 'custom' || p === 'ollama');
   $('#llmBase').value = s.llmBaseUrl || def.base || '';
   const chosen = s.llmModelByProvider?.[p] ?? '';
-  const auto = p === 'gemini' && (!chosen || chosen === 'auto');
-  $('#geminiAutoRow').hidden = p !== 'gemini';
+  const autoVal = AUTO_MODEL[p];
+  const auto = !!autoVal && (!chosen || chosen === autoVal);
+  $('#geminiAutoRow').hidden = !autoVal;
+  if (autoVal) $('#autoModelText').innerHTML = p === 'openrouter'
+    ? 'Ücretsiz modeller (önerilen) <small class="muted">Yalnızca ücretsiz OpenRouter modellerini kullanır; biri meşgulse sıradakini dener</small>'
+    : 'Otomatik model (önerilen) <small class="muted">Çalışan Gemini modelini kendisi bulur; ücretsiz kota dolunca sıradakini dener</small>';
   $('#geminiAuto').checked = auto;
   $('#llmModelRow').hidden = auto;
-  $('#llmModel').value = chosen === 'auto' ? '' : chosen;
-  $('#llmModel').placeholder = p === 'gemini' ? 'Örn. gemini-3.8-flash' : def.model ? `Varsayılan: ${def.model}` : 'Model adı';
+  $('#llmModel').value = chosen === autoVal ? '' : chosen;
+  $('#llmModel').placeholder = p === 'gemini' ? 'Örn. gemini-3.8-flash' : p === 'openrouter' ? 'Örn. deepseek/deepseek-chat-v3.1:free' : def.model ? `Varsayılan: ${def.model}` : 'Model adı';
   $('#llmModels').innerHTML = '';
   $('#testOut').textContent = '';
   s.llmModel = $('#llmModel').value;
@@ -2219,11 +2224,11 @@ $('#llmProvider').addEventListener('change', e => { S.settings.llmProvider = e.t
 $('#llmKey').addEventListener('input', e => { S.settings.keys[S.settings.llmProvider] = e.target.value.trim(); persist(); if (S.project) renderPipeline(); });
 $('#llmBase').addEventListener('input', e => { S.settings.llmBaseUrl = e.target.value.trim(); persist(); });
 $('#geminiAuto').addEventListener('change', e => {
-  const by = { ...(S.settings.llmModelByProvider || {}) };
-  by.gemini = e.target.checked ? 'auto' : ($('#llmModel').value.trim() || 'gemini-3.8-flash');
+  const p = S.settings.llmProvider, by = { ...(S.settings.llmModelByProvider || {}) };
+  by[p] = e.target.checked ? AUTO_MODEL[p] : ($('#llmModel').value.trim() || (p === 'gemini' ? 'gemini-3.8-flash' : ''));
   S.settings.llmModelByProvider = by; persist();
   $('#llmModelRow').hidden = e.target.checked;
-  if (!e.target.checked) { $('#llmModel').value = by.gemini; $('#llmModel').focus(); }
+  if (!e.target.checked) { $('#llmModel').value = by[p]; $('#llmModel').focus(); if (p === 'openrouter') $('#fetchModels').click(); }
 });
 $('#llmModel').addEventListener('input', e => {
   S.settings.llmModelByProvider = { ...(S.settings.llmModelByProvider || {}), [S.settings.llmProvider]: e.target.value.trim() };
@@ -2250,7 +2255,7 @@ $('#fetchModels').addEventListener('click', async e => {
   try {
     const ms = await listModels(S.settings);
     $('#llmModels').innerHTML = ms.map(m => `<option value="${escapeHtml(m)}">`).join('');
-    snack(`${ms.length} model bulundu. Model kutusuna tıklayıp seç.`);
+    snack(S.settings.llmProvider === 'openrouter' ? `${ms.length} ücretsiz model bulundu. Model kutusuna tıklayıp seç.` : `${ms.length} model bulundu. Model kutusuna tıklayıp seç.`);
     $('#llmModel').focus();
   } catch (err) { snack(err.message, { err: true }); }
   b.classList.remove('busy');
@@ -2259,7 +2264,8 @@ $('#testLlm').addEventListener('click', async e => {
   const b = e.currentTarget; b.classList.add('busy'); $('#testOut').textContent = '';
   try {
     await testConnection(S.settings);
-    const gm = S.settings.llmProvider === 'gemini' && (S.settings.llmModelByProvider?.gemini ?? 'auto') === 'auto' ? lastGeminiModel() : null;
+    const lp = S.settings.llmProvider, ch = S.settings.llmModelByProvider?.[lp] || AUTO_MODEL[lp];
+    const gm = AUTO_MODEL[lp] && ch === AUTO_MODEL[lp] ? (lp === 'gemini' ? lastGeminiModel() : lastOpenRouterModel()) : null;
     $('#testOut').textContent = 'Bağlantı çalışıyor' + (gm ? ` (otomatik seçilen model: ${gm})` : '');
     $('#testOut').style.color = 'var(--ok)';
   }
@@ -2307,9 +2313,9 @@ const PROV = {
   groq: { name: 'Groq', tags: [['free', 'Ücretsiz katman']], desc: 'Çok hızlı ve ücretsiz. Klip seçme kalitesi Gemini ve Claude kadar iyi olmayabilir.',
     url: 'https://console.groq.com/keys', linkText: 'Groq konsolunu aç', prefix: 'gsk_',
     steps: ['Groq konsolunu aç.', 'Google, GitHub veya e-posta ile ücretsiz hesap aç.', '<b>Create API Key</b> düğmesine bas, isim olarak "VertaCut" yaz.', 'Anahtarı hemen kopyala; Groq onu yalnızca bir kez gösterir.'] },
-  openrouter: { name: 'OpenRouter', tags: [['free', 'Ücretsiz modeller var'], T_PAID], desc: 'Tek anahtarla yüzlerce model. Adında ":free" geçen modeller ücretsiz, diğerleri ücretli.',
+  openrouter: { name: 'OpenRouter', tags: [['free', 'Ücretsiz']], desc: 'Tek anahtarla yüzlerce model. VertaCut yalnızca ücretsiz modelleri kullanır ve biri meşgulse sıradakine geçer.',
     url: 'https://openrouter.ai/keys', linkText: 'OpenRouter anahtarlarını aç', prefix: 'sk-or-',
-    steps: ['OpenRouter anahtar sayfasını aç.', 'Google veya e-posta ile giriş yap.', '<b>Create Key</b> düğmesine bas, isim ver.', 'Anahtarı kopyala. Ücretsiz kullanmak için Ayarlar\'da adında ":free" olan bir model seç.'] },
+    steps: ['OpenRouter anahtar sayfasını aç.', 'Google veya e-posta ile giriş yap.', '<b>Create Key</b> düğmesine bas, isim ver.', 'Anahtarı kopyala ve buraya yapıştır. Ücretsiz modeller otomatik seçilir; kart veya bakiye gerekmez.'] },
   openai: { name: 'OpenAI (ChatGPT)', tags: [T_PAID], desc: 'GPT modelleri. Kullandıkça ödersin; hesaba önceden bakiye yüklemek gerekir.',
     url: 'https://platform.openai.com/api-keys', linkText: 'OpenAI anahtarlarını aç', prefix: 'sk-',
     steps: ['OpenAI platformunu aç ve giriş yap.', '<b>Billing</b> bölümünden bakiye yükle (en az 5 $).', '<b>Create new secret key</b> düğmesine bas.', 'Anahtarı kopyala; yalnızca bir kez gösterilir.'] },
