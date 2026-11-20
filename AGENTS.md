@@ -29,7 +29,7 @@ Sonra `http://localhost:8080`. `file://` ile açılmaz.
 Kod incelemesi istendiğinde **kodu değiştirme; yalnızca GitHub issue aç.** Her hata için ayrı bir issue:
 
 - Başlık: kısa ve net, Türkçe
-- Etiket: `codex`
+- Etiket: `bulgu`
 - İçerik:
   - **Dosya ve satır**
   - **Nasıl tekrarlanır** (adım adım)
