@@ -15,7 +15,7 @@ First public release of **VertaCut by LegendKaymak** — turn long stream VODs i
 - Everything runs locally — your videos never leave your device
 
 ### Getting started
-Open the hosted app or download `VertaCut-1.8.2.zip`, extract it and serve the folder with any static server (e.g. `npx serve`). Chrome or Edge recommended.
+Try it live at **[vertacut.vercel.app](https://vertacut.vercel.app)**, or download `VertaCut-1.8.2.zip`, extract it and serve the folder with any static server (e.g. `npx serve`). Chrome or Edge recommended.
 
 ---
 
@@ -36,4 +36,4 @@ Open the hosted app or download `VertaCut-1.8.2.zip`, extract it and serve the f
 - Her şey cihazınızda çalışır — videolarınız hiçbir yere yüklenmez
 
 ### Başlarken
-Uygulamayı açın ya da `VertaCut-1.8.2.zip` dosyasını indirip klasörü herhangi bir statik sunucuyla açın (ör. `npx serve`). Chrome veya Edge önerilir.
+**[vertacut.vercel.app](https://vertacut.vercel.app)** adresinden hemen deneyin ya da `VertaCut-1.8.2.zip` dosyasını indirip klasörü herhangi bir statik sunucuyla açın (ör. `npx serve`). Chrome veya Edge önerilir.

@@ -1,6 +1,7 @@
 <p align="center"><img src="icons/wordmark.png" alt="VertaCut by LegendKaymak" width="520"></p>
 
 <p align="center"><b>Turn long livestreams into captioned 9:16 vertical clips, right in your browser.</b><br>
+<a href="https://vertacut.vercel.app"><b>Try it live → vertacut.vercel.app</b></a><br>
 <a href="#english">English</a> · <a href="#türkçe">Türkçe</a></p>
 
 ---
@@ -45,6 +46,8 @@ VertaCut by LegendKaymak finds the best moments in a long stream, places your fa
 - Installable as an app (PWA), works offline, mobile mode, 5 themes
 
 ### Getting started
+
+**Try it now:** [vertacut.vercel.app](https://vertacut.vercel.app), no install needed.
 
 VertaCut is a static site with no build step.
 
@@ -113,6 +116,8 @@ VertaCut by LegendKaymak, uzun bir yayının en güçlü anlarını bulur, facec
 - Uygulama olarak yüklenebilir (PWA), çevrimdışı açılır, mobil mod, 5 tema
 
 ### Başlarken
+
+**Hemen dene:** [vertacut.vercel.app](https://vertacut.vercel.app), kurulum gerekmez.
 
 VertaCut derleme adımı olmayan statik bir sitedir.
 
