@@ -54,60 +54,62 @@ async function scanAudio(videoUrl, onProgress, signal) {
   v.preload = 'auto';
   v.playsInline = true;
   v.crossOrigin = 'anonymous';
-  await new Promise((res, rej) => {
-    v.onloadedmetadata = res;
-    v.onerror = () => rej(new Error('Video okunamadı'));
-  });
-  const duration = v.duration;
-  const ctx = new AudioContext();
-  await ctx.resume();
-  const src = ctx.createMediaElementSource(v);
-  const proc = ctx.createScriptProcessor(4096, 2, 1);
-  const sink = ctx.createGain();
-  sink.gain.value = 0; // hoparlöre ses vermeden işle
-  const chunks = [];
-  let total = 0;
-  proc.onaudioprocess = e => {
-    if (v.paused) return;
-    const ib = e.inputBuffer;
-    const a = ib.getChannelData(0), b = ib.numberOfChannels > 1 ? ib.getChannelData(1) : a;
-    const m = new Float32Array(a.length);
-    for (let i = 0; i < a.length; i++) m[i] = (a[i] + b[i]) * 0.5;
-    chunks.push(m); total += m.length;
-  };
-  src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
-  v.preservesPitch = false; v.mozPreservesPitch = false; v.webkitPreservesPitch = false;
-  v.playbackRate = RATE;
-  await v.play();
-  await new Promise((res, rej) => {
-    const tick = setInterval(() => {
-      if (signal?.aborted) { clearInterval(tick); v.pause(); rej(new DOMException('İptal', 'AbortError')); return; }
-      onProgress(clamp(v.currentTime / duration, 0, 0.99), `Ses taranıyor (${RATE}× hız)`);
-    }, 300);
-    v.onended = () => { clearInterval(tick); res(); };
-    v.onerror = () => { clearInterval(tick); rej(new Error('Oynatma hatası')); };
-  });
-  await sleep(150);
-  proc.disconnect(); src.disconnect();
-  ctx.close();
-  // Birleştir ve yeniden örnekle: yakalanan örnek hızı ctx.sampleRate / RATE (orijinal zaman)
-  const raw = new Float32Array(total);
-  let o = 0; for (const c of chunks) { raw.set(c, o); o += c.length; }
-  const effSr = ctx.sampleRate / RATE;
-  const samples = resample(raw, effSr, TARGET_SR, Math.round(duration * TARGET_SR));
-  onProgress(1, 'Hazır');
-  return { samples, sampleRate: TARGET_SR, method: 'scan' };
-}
-
-function resample(input, fromSr, toSr, outLen) {
-  const out = new Float32Array(outLen || Math.round(input.length * toSr / fromSr));
-  const ratio = fromSr / toSr;
-  for (let i = 0; i < out.length; i++) {
-    const x = i * ratio, i0 = Math.floor(x), f = x - i0;
-    const a = input[i0] ?? 0, b = input[i0 + 1] ?? a;
-    out[i] = a + (b - a) * f;
+  let ctx = null, src = null, proc = null, sink = null, tick = 0;
+  try {
+    await new Promise((res, rej) => {
+      v.onloadedmetadata = res;
+      v.onerror = () => rej(new Error('Video okunamadı'));
+    });
+    const duration = v.duration;
+    ctx = new AudioContext();
+    await ctx.resume();
+    src = ctx.createMediaElementSource(v);
+    proc = ctx.createScriptProcessor(4096, 2, 1);
+    sink = ctx.createGain();
+    sink.gain.value = 0; // hoparlöre ses vermeden işle
+    // Bloklar geldikçe doğrudan 16 kHz çıktıya yeniden örneklenir; ham kayıt tutulmaz.
+    const out = new Float32Array(Math.round(duration * TARGET_SR));
+    const ratio = (ctx.sampleRate / RATE) / TARGET_SR; // çıktı örneği başına giriş örneği
+    let seen = 0, prev = 0, j = 0;
+    proc.onaudioprocess = e => {
+      if (v.paused) return;
+      const ib = e.inputBuffer;
+      const a = ib.getChannelData(0), b = ib.numberOfChannels > 1 ? ib.getChannelData(1) : a;
+      const n = a.length, end = seen + n;
+      const at = k => k < seen ? prev : (a[k - seen] + b[k - seen]) * 0.5;
+      while (j < out.length) {
+        const x = j * ratio, i0 = Math.floor(x);
+        if (i0 + 1 >= end) break;
+        const f = x - i0, s0 = at(i0), s1 = at(i0 + 1);
+        out[j++] = s0 + (s1 - s0) * f;
+      }
+      prev = (a[n - 1] + b[n - 1]) * 0.5;
+      seen = end;
+    };
+    src.connect(proc); proc.connect(sink); sink.connect(ctx.destination);
+    v.preservesPitch = false; v.mozPreservesPitch = false; v.webkitPreservesPitch = false;
+    v.playbackRate = RATE;
+    await v.play();
+    await new Promise((res, rej) => {
+      const stop = () => { v.pause(); rej(new DOMException('İptal', 'AbortError')); };
+      if (signal?.aborted) return stop();
+      signal?.addEventListener('abort', stop, { once: true });
+      tick = setInterval(() => onProgress(clamp(v.currentTime / duration, 0, 0.99), `Ses taranıyor (${RATE}× hız)`), 300);
+      v.onended = res;
+      v.onerror = () => rej(new Error('Oynatma hatası'));
+    });
+    await sleep(150);
+    onProgress(1, 'Hazır');
+    return { samples: out, sampleRate: TARGET_SR, method: 'scan' };
+  } finally {
+    clearInterval(tick);
+    v.onended = v.onerror = null;
+    try { v.pause(); } catch {}
+    if (proc) proc.onaudioprocess = null;
+    try { proc?.disconnect(); src?.disconnect(); sink?.disconnect(); } catch {}
+    if (ctx && ctx.state !== 'closed') ctx.close().catch(() => {});
+    v.removeAttribute('src'); v.load();
   }
-  return out;
 }
 
 /** HOP saniyelik pencerelerde 0..1 arası yüksek sesi (loudness) haritası */
@@ -160,9 +162,12 @@ export function findHypeMoments(energy, duration, { min = 20, max = 60, count = 
   const used = [];
   const results = [];
   const idx = Array.from(score.keys()).sort((a, b) => score[b] - score[a]);
-  const maxScore = score[idx[0]] || 1;
+  const maxScore = score[idx[0]] || 0;
+  // sessiz ya da düz kayıtta belirgin tepe yoksa uydurma klip üretme
+  if (maxScore < 0.08) return [];
   for (const i of idx) {
     if (results.length >= count) break;
+    if (score[i] < maxScore * 0.35) break;
     const t = i * HOP;
     let start = clamp(t - target * 0.62, 0, Math.max(0, duration - target));
     let end = Math.min(duration, start + target);
@@ -199,7 +204,9 @@ export function wavChunks(samples, sr, chunkSec = 600, overlapSec = 0) {
   for (let s = 0; s < samples.length; s += per) {
     const st = Math.max(0, s - Math.floor(overlapSec * sr));
     const slice = samples.subarray(st, Math.min(samples.length, s + per));
-    out.push({ blob: encodeWav(slice, sr), offset: st / sr, duration: slice.length / sr });
+    // WAV yalnızca istendiğinde (gönderilmeden hemen önce) kodlanır
+    let blob = null;
+    out.push({ get blob() { return blob || (blob = encodeWav(slice, sr)); }, release() { blob = null; }, offset: st / sr, duration: slice.length / sr });
   }
   return out;
 }

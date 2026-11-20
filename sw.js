@@ -1,11 +1,14 @@
 // VertaCut service worker: uygulama kabuğunu önbelleğe alır, çevrimdışı açılır.
-const VERSION = 'vertacut-v1.8.3';
+const VERSION = 'vertacut-v1.9.0';
+const FONTS = 'vertacut-fonts';
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
   './js/app.js', './js/util.js', './js/db.js', './js/audio.js', './js/ai.js',
   './js/captions.js', './js/render.js', './js/exporter.js', './js/sfx.js', './js/hooks.js', './fonts/AlloVariable.woff2',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png',
-  './icons/favicon-16.png', './icons/favicon-32.png', './icons/apple-touch-icon.png'
+  './icons/favicon-16.png', './icons/favicon-32.png', './icons/apple-touch-icon.png',
+  './manifest.webmanifest?v=3', './icons/icon.svg?v=3', './icons/favicon-16.png?v=3', './icons/favicon-32.png?v=3', './icons/apple-touch-icon.png?v=3',
+  './icons/icon-192.png?v=3', './icons/icon-512.png?v=3', './icons/maskable-512.png?v=3'
 ];
 
 self.addEventListener('install', e => {
@@ -13,7 +16,8 @@ self.addEventListener('install', e => {
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'vertacut-fonts').map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  // yalnızca VertaCut'ın eski sürüm önbelleklerini sil; aynı kökteki diğer uygulamalara dokunma
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => /^vertacut-v/.test(k) && k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', e => {
@@ -22,7 +26,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   // Yazı tipleri: önce önbellek, arka planda yenile
   if (url.host === 'fonts.googleapis.com' || url.host === 'fonts.gstatic.com') {
-    e.respondWith(caches.open('vertacut-fonts').then(async c => {
+    e.respondWith(caches.open(FONTS).then(async c => {
       const hit = await c.match(req);
       const net = fetch(req).then(r => { if (r.ok || r.type === 'opaque') c.put(req, r.clone()); return r; }).catch(() => hit);
       return hit || net;
@@ -36,6 +40,13 @@ self.addEventListener('fetch', e => {
     fetch(req).then(r => {
       if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
       return r;
-    }).catch(() => caches.match(req).then(r => r || caches.match('./index.html')))
+    }).catch(async () => {
+      // sürüm parametreli adresler (?v=3) kurulumdaki parametresiz kopyayla eşleşsin
+      const hit = await caches.match(req) || await caches.match(req, { ignoreSearch: true });
+      if (hit) return hit;
+      // HTML yedeği yalnızca sayfa gezinmelerinde; dosya isteklerine HTML dönmesin
+      if (req.mode === 'navigate') return caches.match('./index.html');
+      return Response.error();
+    })
   );
 });

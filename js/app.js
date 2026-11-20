@@ -4,7 +4,7 @@ import { DB, loadSettings, saveSettings } from './db.js';
 import { extractAudio, computeEnergy, findHypeMoments, HOP, DEFAULT_FILLERS, isFiller } from './audio.js';
 import { transcribe, parseSubtitleFile, analyzeClips, regenerateMeta, suggestHooks, translateLines, designHook, youtubeChapters, listModels, testConnection, testKey, lastGeminiModel, lastOpenRouterModel, LLM_PROVIDERS, STT_PROVIDERS, CONTENT_TYPES } from './ai.js';
 const AUTO_MODEL = { gemini: 'auto', openrouter: 'free' };
-import { Compositor, LAYOUTS, DEFAULT_REGIONS, clipWords, setLogoImage, hasLogoImage, ratioH } from './render.js';
+import { Compositor, LAYOUTS, DEFAULT_REGIONS, clipWords, ownWords, setLogoImage, hasLogoImage, ratioH } from './render.js';
 import { CAPTION_PRESETS, CAPTION_FONTS, defaultCaptionStyle, buildPages, drawCaptions } from './captions.js';
 import { playSfx, sfxEvents, crossed, duckFactor } from './sfx.js';
 import { HOOK_PRESETS, HOOK_ANIMS, hookDesign, autoHookStyle, drawHookCard } from './hooks.js';
@@ -80,7 +80,7 @@ function hasKey(provider) {
 }
 function hasSttKey() {
   const def = STT_PROVIDERS[S.settings.sttProvider];
-  return !!((S.settings.sttKey || '').trim() || (S.settings.keys[def?.keyFrom] || '').trim());
+  return !!(S.settings.keys[def?.keyFrom] || '').trim();
 }
 
 // ------------------------------------------------------------------ ANA EKRAN
@@ -172,7 +172,7 @@ async function renderRecent() {
       <span class="r-thumb" style="${p.thumb ? `background-image:url(${p.thumb})` : ''}"></span>
       <span class="r-info">
         <span class="r-name">${escapeHtml(p.name)}</span>
-        <span class="r-meta">${fmtDur(p.video?.duration || 0)}, ${p.clips?.length || 0} klip, ${new Date(p.updatedAt || p.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
+        <span class="r-meta">${fmtDur(p.video?.duration || 0)}, ${p.clipCount ?? p.clips?.length ?? 0} klip, ${new Date(p.updatedAt || p.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span>
       </span>
       <button class="btn icon sm danger" data-del="${p.id}" aria-label="Projeyi sil" title="Projeyi sil"><svg class="ic"><use href="#i-trash"/></svg></button>
     </li>`).join('');
@@ -182,8 +182,12 @@ $('#recentList').addEventListener('click', async e => {
   const del = e.target.closest('[data-del]');
   if (del) {
     e.stopPropagation();
-    const p = await DB.getProject(del.dataset.del);
-    if (p && confirm(`"${p.name}" projesi silinsin mi? Video dosyan silinmez.`)) { await DB.deleteProject(p.id); renderRecent(); snack('Proje silindi'); }
+    const p = (await DB.listProjects()).find(m => m.id === del.dataset.del);
+    if (p && confirm(`"${p.name}" projesi silinsin mi? Video dosyan silinmez.`)) {
+      const gone = await DB.deleteProject(p.id);
+      for (const k of gone || []) { const [kind, mid] = k.split(':'); if (kind === 'music') musicCache.delete(mid); }
+      renderRecent(); snack('Proje silindi');
+    }
     return;
   }
   const li = e.target.closest('.recent-item');
@@ -195,8 +199,16 @@ $('#recentList').addEventListener('keydown', e => { if (e.key === 'Enter') e.tar
 async function openFile(file, handle = null) {
   // Aynı dosya için mevcut proje varsa onu aç
   const list = await DB.listProjects().catch(() => []);
-  const existing = list.find(p => p.video?.name === file.name && p.video?.size === file.size);
+  const same = list.filter(p => p.video?.name === file.name && p.video?.size === file.size);
+  let existing = same.find(p => p.video?.lastModified && p.video.lastModified === file.lastModified);
+  if (!existing && handle) {
+    for (const p of same) { const h = await DB.getHandle(p.id); if (h?.isSameEntry && await h.isSameEntry(handle).catch(() => false)) { existing = p; break; } }
+  }
+  // ad ve boyut aynı ama değişiklik tarihi farklı: kullanıcıya sor
+  if (!existing && same.length && confirm(`"${file.name}" adında ve aynı boyutta kayıtlı bir proje var. Bu video o projeye mi ait?\n\nTamam: kayıtlı projeyi aç. İptal: yeni proje başlat.`)) existing = same[0];
   if (existing) {
+    existing = await DB.getProject(existing.id);
+    if (existing.video) existing.video.lastModified = file.lastModified;
     await loadProject(existing, file);
     if (handle) DB.saveHandle(existing.id, handle);
     snack('Bu video için kayıtlı proje açıldı');
@@ -242,7 +254,8 @@ async function loadProject(p, file) {
 }
 
 function setFile(file) {
-  if (S.videoUrl) URL.revokeObjectURL(S.videoUrl);
+  // dışa aktarma sırasında bekleyen işler eski videoyu kullanıyorsa adresi onlar bitince bırak
+  if (S.videoUrl && !S.queue.some(q => q.videoUrl === S.videoUrl && (q.state === 'waiting' || q.state === 'running'))) URL.revokeObjectURL(S.videoUrl);
   S.file = file;
   S.videoUrl = file ? URL.createObjectURL(file) : null;
   $('#relink').hidden = !!file;
@@ -531,8 +544,9 @@ async function runTranscribe() {
     const tr = await transcribe(S.samples, S.sr, S.settings, (p, l) => setProgress(p, 'Yazıya dökülüyor: ' + l), signal);
     if (signal.aborted) return false;
     if (!tr.words.length) throw new Error('Konuşma bulunamadı. Doğru dil seçili mi?');
+    tr._v = Date.now();
     S.project.transcript = tr;
-    S.project.clips.forEach(c => { if (!c.words) c._rev = (c._rev || 0) + 1; });
+    S.project.clips.forEach(c => { if (!c.words) { c._rev = (c._rev || 0) + 1; c.thumbRev = null; } });
     saveProject(); endJob(); renderTranscript();
     snack(`Transkript hazır: ${tr.words.length.toLocaleString('tr-TR')} kelime`);
     return true;
@@ -550,7 +564,9 @@ $('#subInput').addEventListener('change', async e => {
   if (!f) return;
   try {
     const tr = parseSubtitleFile(await f.text(), f.name);
+    tr._v = Date.now();
     S.project.transcript = tr;
+    S.project.clips.forEach(c => { if (!c.words) { c._rev = (c._rev || 0) + 1; c.thumbRev = null; } });
     saveProject(); renderPipeline(); renderTranscript();
     snack(`${tr.segments.length} altyazı satırı içe aktarıldı`);
   } catch (err) { snack('Dosya okunamadı: ' + err.message, { err: true }); }
@@ -662,7 +678,7 @@ function renderClips() {
   $('#montageBtn').hidden = list.filter(c => !c.segments).length < 2;
   $('#clipsEmpty').hidden = list.length > 0;
   $('#clipList').innerHTML = list.map(c => {
-    const d = c.end - c.start;
+    const d = c.segments?.length ? c.segments.reduce((a, [x, y]) => a + (y - x), 0) : c.end - c.start;
     const sc = c.score == null ? '' : `<span class="score ${c.score >= 80 ? 'hi' : c.score >= 60 ? 'mid' : ''}" title="Viral potansiyel puanı">${c.score}</span>`;
     return `<li class="clip ${S.ed?.clip.id === c.id ? 'active' : ''}" data-id="${c.id}" tabindex="0">
       <div class="clip-thumb" style="${c.thumb ? `background-image:url(${c.thumb})` : ''}"><span class="dur">${fmtTime(d)}</span></div>
@@ -687,7 +703,10 @@ $('#clipList').addEventListener('click', e => {
   const li = e.target.closest('.clip'); if (!li) return;
   const clip = S.project.clips.find(c => c.id === li.dataset.id); if (!clip) return;
   const act = e.target.closest('[data-act]')?.dataset.act;
-  if (act === 'play') { mainVideo.currentTime = clip.start; S.previewEnd = clip.end; mainVideo.play(); return; }
+  if (act === 'play') {
+    if (document.body.classList.contains('m')) setMTab('video');
+    mainVideo.currentTime = clip.start; S.previewEnd = clip.end; mainVideo.play(); return;
+  }
   if (act === 'export') { enqueue([clip]); return; }
   if (act === 'del') {
     const idx = S.project.clips.indexOf(clip);
@@ -752,7 +771,7 @@ function renderTranscript() {
   } else {
     for (let i = 0; i < words.length; i += 24) groups.push(Array.from({ length: Math.min(24, words.length - i) }, (_, k) => i + k));
   }
-  const html = groups.map(g => `<div class="tx-seg" data-s="${words[g[0]].s}" data-e="${words[g[g.length - 1]].e}"><span class="ts" data-t="${words[g[0]].s}">${fmtTime(words[g[0]].s)}</span><p>${g.map(i => `<span class="w" data-i="${i}">${escapeHtml(words[i].w)}</span>`).join(' ')}</p></div>`).join('');
+  const html = groups.map(g => `<div class="tx-seg" data-s="${+words[g[0]].s || 0}" data-e="${+words[g[g.length - 1]].e || 0}"><span class="ts" data-t="${+words[g[0]].s || 0}">${fmtTime(words[g[0]].s)}</span><p>${g.map(i => `<span class="w" data-i="${i}">${escapeHtml(words[i].w)}</span>`).join(' ')}</p></div>`).join('');
   body.insertAdjacentHTML('beforeend', html);
   S.curWordEl = null;
   markClipSegments();
@@ -969,7 +988,8 @@ function openEditor(id) {
   mainVideo.pause();
   S.ed = { clip, ranges: rangesFor(clip, S.project), hist: { undo: [], redo: [], last: snapshot(clip), timer: null } };
   updateUndoBtns();
-  S.ed.events = sfxEvents(clip, clipWords(clip, S.project.transcript), S.ed.ranges);
+  S.ed.words = clipWords(clip, S.project.transcript);
+  S.ed.events = sfxEvents(clip, S.ed.words, S.ed.ranges);
   S.ed.lastT = -1;
   setupPreviewMusic();
   if (clip.logo) ensureLogo(clip.logo.id).then(() => S.ed && syncInspector());
@@ -978,16 +998,20 @@ function openEditor(id) {
   $('#editor').hidden = false;
   setupTrimWindow();
   syncInspector();
-  edVideo.currentTime = clip.start;
+  // teaser varsa ilk çıktı parçasından başla
+  S.ed.seg = 0;
+  edVideo.currentTime = S.ed.ranges[0]?.[0] ?? clip.start;
   edVideo.muted = !!S.settings.edMuted;
   setMuteIcon();
   renderClips(); drawHype();
   loadFonts().then(renderPresets);
-  requestAnimationFrame(edLoop);
+  cancelAnimationFrame(edRaf);
+  edRaf = requestAnimationFrame(edLoop);
 }
 
 function closeEditor() {
   if (!S.ed) return;
+  cancelAnimationFrame(edRaf); edRaf = 0;
   edVideo.pause();
   disposePreviewMusic();
   S.project.lastCaption = structuredClone(S.ed.clip.caption);
@@ -1016,12 +1040,15 @@ function touch(rethumb = true) {
   c._rev = (c._rev || 0) + 1;
   S.ed.ranges = rangesFor(c, S.project);
   S.ed.seg = null;
-  S.ed.events = sfxEvents(c, clipWords(c, S.project.transcript), S.ed.ranges);
+  S.ed.words = clipWords(c, S.project.transcript);
+  S.ed.events = sfxEvents(c, S.ed.words, S.ed.ranges);
   if (rethumb) c.thumbRev = null;
   saveProject();
 }
 
+let edRaf = 0;
 function edLoop() {
+  edRaf = 0;
   if (!S.ed) return;
   const c = S.ed.clip;
   const box = edCanvas.parentElement;
@@ -1051,9 +1078,9 @@ function edLoop() {
     if (c.sfx && !edVideo.muted && S.ed.events?.length) for (const ev of crossed(S.ed.events, S.ed.lastT, t)) playSfx(prevCtx(), prevCtx().destination, ev.type, c.sfxVol ?? 0.5);
     S.ed.lastT = t;
     const m = S.ed.musicEl;
-    if (m) { m.muted = edVideo.muted; m.volume = clamp((c.music?.vol ?? 0.18) * (c.music?.duck !== false ? duckFactor(t, clipWords(c, S.project.transcript), S.project.energy) : 1), 0, 1); }
+    if (m) { m.muted = edVideo.muted; m.volume = clamp((c.music?.vol ?? 0.18) * (c.music?.duck !== false ? duckFactor(t, S.ed.words, S.project.energy) : 1), 0, 1); }
   }
-  requestAnimationFrame(edLoop);
+  edRaf = requestAnimationFrame(edLoop);
 }
 
 function edToggle() {
@@ -1206,8 +1233,9 @@ function loadFonts() {
 // --- metin (kelime) paneli ---
 function ensureOwnWords() {
   const c = S.ed.clip;
-  if (!c.words) c.words = clipWords(c, S.project.transcript).map(w => ({ ...w }));
-  return c.words;
+  ownWords(c, S.project.transcript);
+  // arayüzdeki sıra ile aynı (yalnızca görünür aralık); öğeler klibin kendi kelimeleridir
+  return clipWords(c, S.project.transcript);
 }
 function renderWords() {
   if (!S.ed) return;
@@ -1273,10 +1301,12 @@ $('#progOn').addEventListener('change', e => { S.ed.clip.progressOn = e.target.c
 $('#wmText').addEventListener('input', e => { S.ed.clip.watermark = e.target.value; touch(false); });
 
 // --- paylaşım paneli ---
-$('#shTitle').addEventListener('input', e => { S.ed.clip.title = e.target.value; $('#edTitle').value = e.target.value; saveProject(); });
-$('#edTitle').addEventListener('input', e => { S.ed.clip.title = e.target.value; $('#shTitle').value = e.target.value; saveProject(); });
-$('#shDesc').addEventListener('input', e => { S.ed.clip.description = e.target.value; saveProject(); });
-$('#shTags').addEventListener('input', e => { S.ed.clip.hashtags = e.target.value.split(/[\s,]+/).filter(Boolean).map(h => h.startsWith('#') ? h : '#' + h); saveProject(); });
+// paylaşım alanları da düzenleme sayılır: yeniden aramada klip korunur
+const metaEdit = fn => e => { fn(S.ed.clip, e.target.value); S.ed.clip.touched = true; saveProject(); };
+$('#shTitle').addEventListener('input', metaEdit((c, v) => { c.title = v; $('#edTitle').value = v; }));
+$('#edTitle').addEventListener('input', metaEdit((c, v) => { c.title = v; $('#shTitle').value = v; }));
+$('#shDesc').addEventListener('input', metaEdit((c, v) => { c.description = v; }));
+$('#shTags').addEventListener('input', metaEdit((c, v) => { c.hashtags = v.split(/[\s,]+/).filter(Boolean).map(h => h.startsWith('#') ? h : '#' + h); }));
 $$('[data-copy]').forEach(b => b.addEventListener('click', async () => {
   const v = $('#' + b.dataset.copy).value;
   try { await navigator.clipboard.writeText(v); snack('Kopyalandı'); } catch { snack('Kopyalanamadı', { err: true }); }
@@ -1286,14 +1316,14 @@ $('#regenMeta').addEventListener('click', async e => {
   if (!S.project.transcript) return snack('Önce transkript gerekli.');
   const b = e.currentTarget; b.classList.add('busy');
   try {
-    const j = await regenerateMeta(S.ed.clip, S.project, S.settings);
-    const c = S.ed.clip;
+    const ed = S.ed, c = ed.clip; // yanıt gelene kadar başka klibe geçilebilir
+    const j = await regenerateMeta(c, S.project, S.settings);
     if (j.title) c.title = String(j.title);
     if (j.hook) c.hook = String(j.hook);
     if (j.description) c.description = String(j.description);
     if (Array.isArray(j.hashtags)) c.hashtags = j.hashtags.map(String);
     if (Array.isArray(j.emphasis)) c.emphasis = j.emphasis.filter(x => x?.word).map(x => ({ word: String(x.word), emoji: String(x.emoji || '') }));
-    touch(false); syncInspector();
+    if (S.ed === ed) { touch(false); syncInspector(); } else { c.touched = true; c._rev = (c._rev || 0) + 1; saveProject(); }
     snack('Yeni başlık ve metinler yazıldı');
   } catch (err) { snack(err.message, { err: true }); }
   b.classList.remove('busy');
@@ -1439,7 +1469,6 @@ function snapToWord(t, edge) {
   const end = () => {
     if (!drag) return;
     if (drag.kind !== 'seek' && drag.moved) {
-      if (S.ed.clip.words) S.ed.clip.words = null; // zaman değişti; kelimeleri transkriptten yeniden al
       touch(); setupTrimWindow(); drawTrim(); drawHype();
       if (!$('[data-panel="words"]').hidden) renderWords();
     }
@@ -1450,7 +1479,7 @@ function snapToWord(t, edge) {
   const keyNudge = (which, d) => {
     const c = S.ed.clip, D = S.project.video.duration;
     if (which === 'start') c.start = clamp(c.start + d, 0, c.end - 1); else c.end = clamp(c.end + d, c.start + 1, D);
-    c.words = null; touch(); setupTrimWindow(); drawTrim(); updateTrimInfo();
+    touch(); setupTrimWindow(); drawTrim(); updateTrimInfo();
     edVideo.currentTime = which === 'start' ? c.start : Math.max(c.start, c.end - 1.5);
   };
   $('#hL').addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); keyNudge('start', e.key === 'ArrowLeft' ? -0.25 : 0.25); } });
@@ -1517,7 +1546,9 @@ $('#hookIdeasBtn').addEventListener('click', async e => {
   if (!hasKey(S.settings.llmProvider)) return snack('Kanca önerisi için AI anahtarı gerekli.', { action: 'Kurulum rehberi', onAction: () => openGuide(1) });
   const b = e.currentTarget; b.classList.add('busy');
   try {
-    const hooks = await suggestHooks(S.ed.clip, S.project, S.settings);
+    const ed = S.ed;
+    const hooks = await suggestHooks(ed.clip, S.project, S.settings);
+    if (S.ed !== ed) { b.classList.remove('busy'); return; }
     $('#hookIdeas').innerHTML = hooks.map(h => `<button class="chip ${h === S.ed.clip.hook ? 'on' : ''}">${escapeHtml(h)}</button>`).join('');
   } catch (err) { snack(err.message, { err: true }); }
   b.classList.remove('busy');
@@ -1550,7 +1581,7 @@ $('#trBtn').addEventListener('click', async e => {
       for (const tk of toks) { const d = dur * (tk.length + 1) / total; out.push({ w: tk, s: t, e: t + d * 0.95 }); t += d; }
     });
     c.words = out; c.emphasis = [];
-    touch(false); renderWords();
+    if (S.ed?.clip === c) { touch(false); renderWords(); } else { c.touched = true; c._rev = (c._rev || 0) + 1; saveProject(); }
     snack(`Altyazı ${$('#trLang').value} diline çevrildi`);
   } catch (err) { snack(err.message, { err: true }); }
   b.classList.remove('busy');
@@ -1631,7 +1662,7 @@ function parseChat(text) {
     for (const line of text.split(/\r?\n/)) { const m = line.match(re); if (m) { const v = parseTime(m[1]); if (isFinite(v)) times.push(v); } }
   }
   const D = S.project.video.duration || 0;
-  const max = Math.max(0, ...times);
+  let max = 0; for (const t of times) if (t > max) max = t;
   if (D && max > D * 5 && max / 1000 <= D * 1.2) times = times.map(t => t / 1000); // milisaniye ise
   return times.filter(t => !D || t <= D + 5);
 }
@@ -1765,11 +1796,13 @@ function renderMusic() {
 $('#musicBox').addEventListener('change', async e => {
   if (!e.target.matches('[data-music]')) return;
   const f = e.target.files[0]; if (!f) return;
+  const ed = S.ed, c = ed.clip; // dosya kaydedilirken klip değişebilir
   const id = uid();
   musicCache.set(id, f);
   await DB.saveHandle('music:' + id, f);
-  S.ed.clip.music = { id, name: f.name, vol: S.ed.clip.music?.vol ?? 0.18, duck: S.ed.clip.music?.duck ?? true };
-  touch(false); renderMusic(); setupPreviewMusic();
+  c.music = { id, name: f.name, vol: c.music?.vol ?? 0.18, duck: c.music?.duck ?? true };
+  c.touched = true; c._rev = (c._rev || 0) + 1;
+  if (S.ed === ed) { touch(false); renderMusic(); setupPreviewMusic(); } else saveProject();
   snack('Müzik eklendi. Önizlemede ve dışa aktarmada çalınacak.');
 });
 $('#musicBox').addEventListener('click', e => {
@@ -1890,7 +1923,7 @@ $('#hookDesignBtn').addEventListener('click', async e => {
     for (const k of ['hookBg', 'hookFg', 'hookFont', 'hookSize', 'hookRadius', 'hookTilt', 'hookAnim', 'hookUpper']) delete c[k];
     for (const [k, v] of Object.entries(d)) if (v !== undefined) c[k] = v;
     c.hookOn = true;
-    touch(false); syncHookPanel(); showHookFrame();
+    if (S.ed?.clip === c) { touch(false); syncHookPanel(); showHookFrame(); } else { c.touched = true; c._rev = (c._rev || 0) + 1; saveProject(); }
     snack('AI kancayı yeniden tasarladı');
   } catch (err) { snack(err.message, { err: true }); }
   b.classList.remove('busy');
@@ -2006,13 +2039,14 @@ function renderLogo() {
 $('#logoBox').addEventListener('change', async e => {
   if (!e.target.matches('[data-logo]')) return;
   const f = e.target.files[0]; if (!f) return;
+  const ed = S.ed, c = ed.clip, proj = S.project; // dosya işlenirken klip değişebilir
   const id = uid();
   try { setLogoImage(id, await createImageBitmap(f)); } catch { return snack('Bu görsel açılamadı. PNG veya JPG dene.', { err: true }); }
   await DB.saveHandle('logo:' + id, f);
-  const c = S.ed.clip;
   c.logo = { id, name: f.name, pos: c.logo?.pos || 'tr', size: c.logo?.size ?? 0.2, opacity: c.logo?.opacity ?? 0.9 };
-  S.project.lastLogo = { ...c.logo };
-  touch(); renderLogo();
+  proj.lastLogo = { ...c.logo };
+  c.touched = true; c._rev = (c._rev || 0) + 1;
+  if (S.ed === ed) { touch(); renderLogo(); } else if (S.project === proj) saveProject();
 });
 $('#logoBox').addEventListener('click', e => { if (e.target.closest('#logoRm')) { S.ed.clip.logo = null; S.project.lastLogo = null; touch(); renderLogo(); } });
 $('#logoPos').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || !S.ed.clip.logo) return; S.ed.clip.logo.pos = b.dataset.v; S.project.lastLogo = { ...S.ed.clip.logo }; segOn('#logoPos', b.dataset.v); touch(); });
@@ -2027,10 +2061,11 @@ $('#brandApplyAll').addEventListener('click', () => {
 // ------------------------------------------------------------------ YOUTUBE BÖLÜMLERİ
 let chaptersData = null;
 async function runChapters(force = false) {
+  const dlg = $('#chaptersDlg');
+  // kayıtlı bölümler anahtarsız ve çevrimdışı da açılır
+  if (S.project?.chapters && !force) { chaptersData = S.project.chapters; renderChapters(); return dlg.open || dlg.showModal(); }
   if (!S.project?.transcript) return snack('Önce transkript gerekli.', { action: 'Yazıya dök', onAction: () => runTranscribe() });
   if (!hasKey(S.settings.llmProvider)) return snack('Bölümler için AI anahtarı gerekli.', { action: 'Kurulum rehberi', onAction: () => openGuide(1) });
-  const dlg = $('#chaptersDlg');
-  if (S.project.chapters && !force) { chaptersData = S.project.chapters; renderChapters(); return dlg.open || dlg.showModal(); }
   $('#chaptersBody').innerHTML = '<p class="muted">AI yayını okuyup bölümlere ayırıyor…</p><div class="bar indet"><i></i></div>';
   if (!dlg.open) dlg.showModal();
   try {
@@ -2062,7 +2097,7 @@ function enqueue(clips) {
   let added = 0;
   for (const c of clips) {
     if (S.queue.some(q => q.clipId === c.id && (q.state === 'waiting' || q.state === 'running'))) continue;
-    S.queue.push({ id: uid(), clipId: c.id, name: c.title, state: 'waiting', progress: 0 });
+    S.queue.push({ id: uid(), clipId: c.id, name: c.title, state: 'waiting', progress: 0, project: S.project, videoUrl: S.videoUrl, settings: { ...S.settings } });
     added++;
   }
   $('#queue').hidden = false;
@@ -2075,15 +2110,17 @@ async function processQueue() {
   if (S.queue.some(q => q.state === 'running')) return;
   const job = S.queue.find(q => q.state === 'waiting');
   if (!job) return;
-  const clip = S.project.clips.find(c => c.id === job.clipId);
-  if (!clip) { job.state = 'error'; job.error = 'Klip silinmiş'; renderQueue(); return processQueue(); }
+  // iş, sıraya alındığı projeye ve videoya bağlıdır (proje değişse bile)
+  const proj = job.project;
+  const clip = proj.clips.find(c => c.id === job.clipId);
+  if (!clip) { job.state = 'error'; job.error = 'Klip silinmiş'; releaseJobVideo(job); renderQueue(); return processQueue(); }
   job.state = 'running'; job.ctrl = new AbortController();
   renderQueue();
   await loadFonts();
   try {
     const musicBlob = clip.music ? await getMusic(clip.music.id) : null;
     const { blob, mime } = await exportClip({
-      videoUrl: S.videoUrl, clip, project: S.project, settings: S.settings, signal: job.ctrl.signal, musicBlob,
+      videoUrl: job.videoUrl, clip, project: proj, settings: job.settings, signal: job.ctrl.signal, musicBlob,
       onProgress: p => { job.progress = p; updateQueueItem(job); }
     });
     job.ext = extFor(mime);
@@ -2093,14 +2130,22 @@ async function processQueue() {
     job.fileName = `${safeName(clip.title)}.${job.ext}`;
     job.state = 'done';
     clip.exported = true;
-    saveProject(); renderClips();
+    if (proj === S.project) { saveProject(); renderClips(); } else DB.saveProject(proj).catch(() => {});
     const a = document.createElement('a'); a.href = job.url; a.download = job.fileName; document.body.appendChild(a); a.click(); a.remove();
   } catch (e) {
     if (e.name === 'AbortError') job.state = 'canceled';
     else { console.error(e); job.state = 'error'; job.error = e.message; }
   }
+  releaseJobVideo(job);
   renderQueue();
   processQueue();
+}
+/** Proje değiştiyse ve eski videoyu bekleyen başka iş kalmadıysa video adresini bırak */
+function releaseJobVideo(job) {
+  const url = job.videoUrl;
+  job.project = null; job.settings = null;
+  if (!url || url === S.videoUrl) return;
+  if (!S.queue.some(q => q !== job && q.videoUrl === url && (q.state === 'waiting' || q.state === 'running'))) URL.revokeObjectURL(url);
 }
 
 let queueCollapseT;
@@ -2139,7 +2184,7 @@ function updateQueueItem(j) {
 }
 $('#queueList').addEventListener('click', e => {
   const c = e.target.closest('[data-cancel]'), r = e.target.closest('[data-retry]');
-  if (c) { const j = S.queue.find(x => x.id === c.dataset.cancel); if (j.state === 'waiting') j.state = 'canceled'; else j.ctrl?.abort(); renderQueue(); }
+  if (c) { const j = S.queue.find(x => x.id === c.dataset.cancel); if (j.state === 'waiting') { j.state = 'canceled'; releaseJobVideo(j); } else j.ctrl?.abort(); renderQueue(); }
   const sh = e.target.closest('[data-share]');
   if (sh) { const j = S.queue.find(x => x.id === sh.dataset.share); shareJob(j); return; }
   if (r) { const j = S.queue.find(x => x.id === r.dataset.retry); j.state = 'waiting'; j.progress = 0; renderQueue(); processQueue(); }
@@ -2194,7 +2239,7 @@ function syncLlmFields() {
   $('#llmKey').disabled = !!def.noKey && p === 'ollama';
   $('#llmKeyLink').hidden = !def.keyUrl; if (def.keyUrl) $('#llmKeyLink').href = def.keyUrl;
   $('#llmBaseRow').hidden = !(p === 'custom' || p === 'ollama');
-  $('#llmBase').value = s.llmBaseUrl || def.base || '';
+  $('#llmBase').value = s.llmBaseByProvider?.[p] || def.base || '';
   const chosen = s.llmModelByProvider?.[p] ?? '';
   const autoVal = AUTO_MODEL[p];
   const auto = !!autoVal && (!chosen || chosen === autoVal);
@@ -2222,7 +2267,7 @@ function syncSttFields() {
 const persist = () => saveSettings(S.settings);
 $('#llmProvider').addEventListener('change', e => { S.settings.llmProvider = e.target.value; syncLlmFields(); persist(); if (S.project) renderPipeline(); });
 $('#llmKey').addEventListener('input', e => { S.settings.keys[S.settings.llmProvider] = e.target.value.trim(); persist(); if (S.project) renderPipeline(); });
-$('#llmBase').addEventListener('input', e => { S.settings.llmBaseUrl = e.target.value.trim(); persist(); });
+$('#llmBase').addEventListener('input', e => { S.settings.llmBaseByProvider = { ...(S.settings.llmBaseByProvider || {}), [S.settings.llmProvider]: e.target.value.trim() }; persist(); });
 $('#geminiAuto').addEventListener('change', e => {
   const p = S.settings.llmProvider, by = { ...(S.settings.llmModelByProvider || {}) };
   by[p] = e.target.checked ? AUTO_MODEL[p] : ($('#llmModel').value.trim() || (p === 'gemini' ? 'gemini-3.8-flash' : ''));
@@ -2397,7 +2442,7 @@ function keyStepHtml(id, title) {
   const keyBox = P.noKey ? `
     <div class="field g-key">
       <label for="gBase">Ollama adresi</label>
-      <div class="copy-row"><input id="gKey" data-provider="${id}" type="text" value="${escapeHtml(S.settings.llmBaseUrl || 'http://localhost:11434/v1')}"><button class="btn filled sm" id="gTest">Test et</button></div>
+      <div class="copy-row"><input id="gKey" data-provider="${id}" type="text" value="${escapeHtml(S.settings.llmBaseByProvider?.[id] || 'http://localhost:11434/v1')}"><button class="btn filled sm" id="gTest">Test et</button></div>
       <small class="g-status ${st ? st.kind : ''}" id="gStatus">${st ? escapeHtml(st.msg) : 'Ollama çalışıyorsa bağlantıyı test et.'}</small>
     </div>` : `
     <div class="field g-key">
@@ -2485,7 +2530,7 @@ async function guideTest() {
   if (!val) { out.className = 'g-status err'; out.textContent = P.noKey ? 'Adres boş olamaz.' : 'Önce anahtarı yapıştır.'; return; }
   btn.classList.add('busy'); out.className = 'g-status'; out.textContent = 'Kontrol ediliyor…';
   try {
-    if (P.noKey) { await testKey(id, '', val); S.settings.llmBaseUrl = val; }
+    if (P.noKey) { await testKey(id, '', val); S.settings.llmBaseByProvider = { ...(S.settings.llmBaseByProvider || {}), [id]: val }; }
     else { await testKey(id, val); S.settings.keys[id] = val; }
     const steps = guideSteps();
     if (steps[guide.step] === 'llmkey') S.settings.llmProvider = id;

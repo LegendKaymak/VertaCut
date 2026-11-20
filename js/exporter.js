@@ -80,14 +80,17 @@ export async function exportClip({ videoUrl, clip, project, settings, musicBlob 
   video.playsInline = true;
   video.style.cssText = 'position:fixed;left:-9999px;width:2px;height:2px;opacity:0';
   document.body.appendChild(video);
+  // hazırlık sırasında hata olsa bile her kaynak finally içinde bırakılır
+  let node = null, clean = null, musicEl = null, musicNode = null, musicUrl = null, stream = null, timer = 0, running = true;
+  const chunks = [];
+  try {
   await new Promise((r, j) => { video.onloadeddata = r; video.onerror = () => j(new Error('Video yüklenemedi')); });
 
   audioCtx ||= new AudioContext();
   await audioCtx.resume();
-  let node = elementNodes.get(video);
+  node = elementNodes.get(video);
   if (!node) { node = audioCtx.createMediaElementSource(video); elementNodes.set(video, node); }
   const dest = audioCtx.createMediaStreamDestination();
-  let clean = null;
   if (clip.cleanAudio) {
     // sesi iyileştir: uğultu kesme + netlik + kompresör
     const hp = audioCtx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 85;
@@ -98,7 +101,7 @@ export async function exportClip({ videoUrl, clip, project, settings, musicBlob 
     clean = [hp, pres, comp, make];
   } else node.connect(dest);
   // arka plan müziği (otomatik kısma ile)
-  let musicEl = null, musicNode = null, musicGain = null, musicUrl = null;
+  let musicGain = null;
   const mvol = clip.music?.vol ?? 0.18;
   if (musicBlob && clip.music) {
     musicUrl = URL.createObjectURL(musicBlob);
@@ -119,15 +122,13 @@ export async function exportClip({ videoUrl, clip, project, settings, musicBlob 
   const events = sfxEvents(clip, words, ranges);
   let lastT = -1;
 
-  const stream = canvas.captureStream(fps);
+  stream = canvas.captureStream(fps);
   dest.stream.getAudioTracks().forEach(tr => stream.addTrack(tr));
   const bitrate = W >= 1440 ? 16e6 : W >= 1080 ? 10e6 : 5e6;
   const rec = new MediaRecorder(stream, { mimeType: mime || undefined, videoBitsPerSecond: bitrate, audioBitsPerSecond: 192000 });
-  const chunks = [];
   rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   const stopped = new Promise(r => { rec.onstop = r; });
 
-  let running = true;
   const draw = () => {
     if (!running) return;
     const t = video.currentTime;
@@ -137,7 +138,7 @@ export async function exportClip({ videoUrl, clip, project, settings, musicBlob 
   const hasRVFC = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
   const vfc = () => { draw(); if (running && hasRVFC) video.requestVideoFrameCallback(vfc); };
   if (hasRVFC) video.requestVideoFrameCallback(vfc);
-  const timer = setInterval(draw, 1000 / fps);
+  timer = setInterval(draw, 1000 / fps);
 
   const seek = t => new Promise(r => {
     const done = () => { video.removeEventListener('seeked', done); r(); };
@@ -145,7 +146,6 @@ export async function exportClip({ videoUrl, clip, project, settings, musicBlob 
     video.currentTime = t;
   });
 
-  try {
     let doneDur = 0;
     for (let i = 0; i < ranges.length; i++) {
       const [s, e] = ranges[i];
@@ -178,10 +178,11 @@ export async function exportClip({ videoUrl, clip, project, settings, musicBlob 
   } finally {
     running = false;
     clearInterval(timer);
-    try { node.disconnect(); } catch {}
+    try { node?.disconnect(); } catch {}
     clean?.forEach(n => { try { n.disconnect(); } catch {} });
-    if (musicEl) { musicEl.pause(); try { musicNode.disconnect(); } catch {} URL.revokeObjectURL(musicUrl); }
-    stream.getTracks().forEach(t => t.stop());
+    if (musicEl) { musicEl.pause(); try { musicNode?.disconnect(); } catch {} }
+    if (musicUrl) URL.revokeObjectURL(musicUrl);
+    stream?.getTracks().forEach(t => t.stop());
     video.pause(); video.removeAttribute('src'); video.load(); video.remove();
   }
   if (signal?.aborted) throw new DOMException('İptal edildi', 'AbortError');
@@ -190,21 +191,35 @@ export async function exportClip({ videoUrl, clip, project, settings, musicBlob 
   return { blob: new Blob(chunks, { type }), mime: type };
 }
 
-/** Klip altyazılarını SRT olarak üretir (klip başına göre zaman) */
+/** Klip altyazılarını SRT olarak üretir (çıktı zamanına göre; kesilen kelimeler çıkarılır) */
 export function clipSrt(clip, project) {
-  const words = clipWords(clip, project.transcript).filter(w => !w.hidden);
+  let words = clipWords(clip, project.transcript).filter(w => !w.hidden);
+  if (clip.fillers) words = words.filter(w => !isFiller(w.w, clip.fillerWords));
   const ranges = rangesFor(clip, project);
-  const total = outDuration(ranges);
   const main = ranges.teaser ? ranges.slice(ranges.teaser) : ranges;
-  const offset = total - outDuration(main);
-  const map = t => offset + progressAt(main, t) * outDuration(main);
+  const offset = outDuration(ranges) - outDuration(main);
+  // her kelimeyi içinde bulunduğu çıktı parçasına göre zamanla; hiçbir parçaya düşmeyen kelime atılır
+  const starts = []; let acc = offset;
+  for (const [a, b] of main) { starts.push(acc); acc += b - a; }
+  const place = w => {
+    for (let i = 0; i < main.length; i++) {
+      const [a, b] = main[i];
+      if (w.e > a && w.s < b) return { w: w.w, s: starts[i] + Math.max(0, w.s - a), e: starts[i] + Math.min(b, w.e) - a };
+    }
+    return null;
+  };
+  const placed = words.map(place).filter(Boolean);
   const lines = []; let cur = [];
   const flush = () => { if (cur.length) { lines.push(cur); cur = []; } };
-  for (const w of words) { if (cur.length >= 7 || (cur.length && w.s - cur[cur.length - 1].e > 0.8)) flush(); cur.push(w); }
+  for (const w of placed) { if (cur.length >= 7 || (cur.length && w.s - cur[cur.length - 1].e > 0.8)) flush(); cur.push(w); }
   flush();
   const ts = t => {
-    const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = Math.floor(t % 60), ms = Math.round((t % 1) * 1000) % 1000;
+    const all = Math.max(0, Math.round(t * 1000));
+    const h = Math.floor(all / 3600000), m = Math.floor(all / 60000) % 60, s = Math.floor(all / 1000) % 60, ms = all % 1000;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
   };
-  return lines.map((l, i) => `${i + 1}\n${ts(map(Math.max(clip.start, l[0].s)))} --> ${ts(map(Math.min(clip.end, l[l.length - 1].e)))}\n${l.map(w => w.w).join(' ')}\n`).join('\n');
+  return lines.map((l, i) => {
+    const s0 = l[0].s, e0 = Math.max(s0 + 0.05, l[l.length - 1].e);
+    return `${i + 1}\n${ts(s0)} --> ${ts(e0)}\n${l.map(w => w.w).join(' ')}\n`;
+  }).join('\n');
 }

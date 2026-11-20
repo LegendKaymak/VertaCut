@@ -41,7 +41,23 @@ function wrap(ctx, text, maxW) {
     if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; } else cur = test;
   }
   if (cur) lines.push(cur);
-  return lines.slice(0, 3);
+  return lines;
+}
+/** Başlığı en fazla 3 satıra sığdırmak için yazıyı küçültür; yine sığmazsa son satırı "…" ile bitirir */
+export function fitHook(ctx, text, maxW, size, fontFor) {
+  let fs = size, lines;
+  for (;;) {
+    ctx.font = fontFor(fs);
+    lines = wrap(ctx, text, maxW);
+    if (lines.length <= 3 || fs <= size * 0.55) break;
+    fs = Math.max(size * 0.55, fs * 0.92);
+  }
+  if (lines.length > 3) {
+    let last = lines.slice(2).join(' ');
+    while (last.length > 1 && ctx.measureText(last + '…').width > maxW) last = last.slice(0, -1);
+    lines = [...lines.slice(0, 2), last.trimEnd() + '…'];
+  }
+  return { fs, lines, cut: lines[2]?.endsWith('…') && !text.endsWith('…') };
 }
 const easeOutBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
 
@@ -56,11 +72,9 @@ export function drawHookCard(ctx, clip, elapsed, W, H) {
   if (vis <= 0) return;
   let text = (d.upper ? upperTR(clip.hook) : clip.hook).trim();
   if (d.emoji) text = d.emoji + ' ' + text;
-  const fs = d.size * k;
   ctx.save();
-  ctx.font = `${d.weight} ${fs}px "${d.font}", "Allo", system-ui, sans-serif`;
   ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-  const lines = wrap(ctx, text, W * 0.74);
+  const { fs, lines } = fitHook(ctx, text, W * 0.74, d.size * k, f => `${d.weight} ${f}px "${d.font}", "Allo", system-ui, sans-serif`);
   // daktilo: karakterleri sırayla aç
   let shown = lines;
   if (d.anim === 'type' && outT >= 1) {

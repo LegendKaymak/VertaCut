@@ -677,6 +677,12 @@ body.m .tabs { position: sticky; top: calc(56px + var(--stage-h, calc(44vh + 74p
 body.m .tabs button { flex: none; height: 46px; padding: 0 14px; }
 body.m .tab-panel { overflow: visible; padding-bottom: 40px; }
 body.m .layout-grid { grid-template-columns: repeat(3, 1fr); }
+/* kısa yatay telefon ekranı: sabit önizleme denetimleri kapatmasın, birlikte kaysın */
+@media (orientation: landscape) and (max-height: 520px) {
+  body.m .stage { position: static; box-shadow: none; }
+  body.m .phone { height: min(70vh, 340px); }
+  body.m .tabs { position: sticky; top: 56px; }
+}
 body.m .colors { grid-template-columns: repeat(5, 1fr); }
 
 /* diyaloglar: alttan açılan panel */

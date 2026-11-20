@@ -35,10 +35,31 @@ export const DEFAULT_REGIONS = {
 
 /** Klip için altyazı kelimeleri: klipte düzenlenmiş liste varsa o, yoksa transkriptten */
 export function clipWords(clip, transcript) {
-  if (clip.words) return clip.words;
-  if (!transcript?.words) return [];
   const segs = clip.segments?.length ? clip.segments : [[clip.start, clip.end]];
-  return transcript.words.filter(w => segs.some(([a, b]) => w.e > a && w.s < b)).map(w => ({ ...w }));
+  const inWin = w => segs.some(([a, b]) => w.e > a && w.s < b);
+  if (clip.words) {
+    // düzenlenmiş kelimeler kaynak zamanlarıyla saklanır; kırpma yalnızca görünür aralığı değiştirir
+    const own = clip.words.filter(inWin);
+    const extra = extraWords(clip, transcript, inWin);
+    return extra.length ? [...own, ...extra].sort((x, y) => x.s - y.s) : own;
+  }
+  if (!transcript?.words) return [];
+  return transcript.words.filter(inWin).map(w => ({ ...w }));
+}
+/** Klip, düzenlenen kelimelerin kapsamı dışına genişletildiyse transkriptten eksik kalan kelimeler */
+function extraWords(clip, transcript, inWin) {
+  if (!transcript?.words?.length || !clip.words.length) return [];
+  let lo = Infinity, hi = -Infinity;
+  for (const w of clip.words) { if (w.s < lo) lo = w.s; if (w.e > hi) hi = w.e; }
+  return transcript.words.filter(w => inWin(w) && (w.e <= lo || w.s >= hi)).map(w => ({ ...w }));
+}
+/** Düzenleme için klibe ait kalıcı kelime listesi (önceki düzenlemeler korunur) */
+export function ownWords(clip, transcript) {
+  if (!clip.words) { clip.words = clipWords(clip, transcript).map(w => ({ ...w })); return clip.words; }
+  const segs = clip.segments?.length ? clip.segments : [[clip.start, clip.end]];
+  const extra = extraWords(clip, transcript, w => segs.some(([a, b]) => w.e > a && w.s < b));
+  if (extra.length) clip.words = [...clip.words, ...extra].sort((x, y) => x.s - y.s);
+  return clip.words;
 }
 
 export class Compositor {
@@ -66,7 +87,7 @@ export class Compositor {
     const { ctx, canvas } = this;
     if (!words) {
       // klip kelimelerini her karede yeniden süzmemek için önbellekle
-      const wk = [clip.id, clip._rev || 0, clip.start, clip.end, project.transcript?.words?.length || 0, !!clip.words].join('|');
+      const wk = [clip.id, clip._rev || 0, clip.start, clip.end, project.transcript?.words?.length || 0, project.transcript?._v || 0, !!clip.words].join('|');
       if (wk !== this._wsKey) { this._ws = clipWords(clip, project.transcript); this._wsKey = wk; }
       words = this._ws;
     }
@@ -96,8 +117,9 @@ export class Compositor {
           drawCover(ctx, video, content, { x: -40 * k, y: -40 * k, w: W + 80 * k, h: H + 80 * k }, 0.5, 0.5, 1);
           ctx.restore();
           ctx.filter = 'none';
-          const ar = content.w / content.h;
-          const dw = W * zoom, dh = dw / ar;
+          // hem genişliğe hem yüksekliğe sığdır: dik kaynakta da tüm kare görünür
+          const fit = Math.min(W / content.w, H / content.h) * zoom;
+          const dw = content.w * fit, dh = content.h * fit;
           const dy = (H - dh) / 2 + (fy - 0.5) * H * 0.5;
           ctx.save();
           ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 40 * k;
@@ -150,7 +172,8 @@ export class Compositor {
     if (clip.captionsOn !== false && clip.caption) {
       const ws = clip.fillers ? words.filter(w => !isFiller(w.w, clip.fillerWords)) : words;
       const key = JSON.stringify([clip.id, clip.caption.maxWords, ws.length, clip._rev || 0, clip.start, clip.end, !!clip.fillers]);
-      if (key !== this._pagesKey) {
+      if (key !== this._pagesKey || words !== this._pagesSrc) {
+        this._pagesSrc = words;
         this._pages = buildPages(ws, clip.caption.maxWords);
         this._emph = new Map((clip.emphasis || []).map(e => [normWord(e.word), e.emoji || true]));
         this._pagesKey = key;
@@ -177,8 +200,11 @@ export class Compositor {
 
   drawLogo(clip, W, H) {
     const img = LOGOS.get(clip.logo.id), ctx = this.ctx, k = W / 1080;
-    const w = W * (clip.logo.size ?? 0.2), h = w * (img.height / img.width);
     const m = 40 * k, pos = clip.logo.pos || 'tr';
+    // en-boy oranını koruyarak hem genişliğe hem yüksekliğe sığdır
+    let w = W * (clip.logo.size ?? 0.2), h = w * (img.height / img.width);
+    const maxH = Math.max(1, Math.min(H * (clip.logo.size ?? 0.2) * 1.6, H - 2 * m - 60 * k));
+    if (h > maxH) { w *= maxH / h; h = maxH; }
     const x = pos[1] === 'l' ? m : pos[1] === 'c' ? (W - w) / 2 : W - w - m;
     const y = pos[0] === 't' ? m + 20 * k : pos[0] === 'm' ? (H - h) / 2 : H - h - m - 40 * k;
     ctx.save(); ctx.globalAlpha = clip.logo.opacity ?? 0.9;

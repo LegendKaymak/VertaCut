@@ -79,6 +79,8 @@ async function geminiGenerate(chosen, key, body, signal) {
       if (e.name === 'AbortError') throw e;
       // anahtar geçersizse diğer modelleri denemenin anlamı yok
       if (/API key not valid|API_KEY_INVALID|PERMISSION_DENIED.*key/i.test(e.message)) throw e;
+      // ağ hatası veya geçersiz istek modelden bağımsızdır; başka model denemek işe yaramaz
+      if (!e.status || e.status === 401 || (e.status === 400 && !/model|not found|not supported/i.test(e.message))) throw e;
       lastErr = e;
     }
   }
@@ -135,7 +137,7 @@ async function openRouterFree(key, body, signal) {
       return out;
     } catch (e) {
       if (e.name === 'AbortError') throw e;
-      if (e.status === 401) throw e; // anahtar geçersiz
+      if (!e.status || e.status === 401) throw e; // ağ hatası ya da anahtar geçersiz
       lastErr = e;
     }
   }
@@ -147,32 +149,47 @@ export async function transcribe(samples, sr, settings, onProgress = () => {}, s
   const p = settings.sttProvider;
   const def = STT_PROVIDERS[p];
   if (!def) throw new AIError('Geçersiz transkripsiyon sağlayıcısı');
-  const key = (settings.sttKey || '').trim() || keyFor(settings, def.keyFrom);
+  const key = keyFor(settings, def.keyFrom);
   if (!key) throw new AIError(`${def.label} için API anahtarı gerekli. Ayarlar → AI bölümünden ekle.`);
   const chunks = wavChunks(samples, sr, def.chunk);
   const results = new Array(chunks.length);
   let done = 0;
   onProgress(0, `0 / ${chunks.length} parça`);
+  // bir parça kalıcı hata verirse diğer işçiler de durur ve süren istekler iptal edilir
+  const ac = new AbortController();
+  const onAbort = () => ac.abort();
+  if (signal?.aborted) ac.abort(); else signal?.addEventListener('abort', onAbort, { once: true });
+  const sig = ac.signal;
   const worker = async i => {
     const c = chunks[i];
     let attempt = 0;
-    for (;;) {
-      try {
-        results[i] = p === 'gemini'
-          ? await sttGemini(c, key, settings, signal)
-          : await sttOpenAI(c, key, settings, def, signal);
-        break;
-      } catch (e) {
-        if (e.name === 'AbortError' || ++attempt >= 3 || !/429|5\d\d|bağlantı/.test(e.message)) throw e;
-        await new Promise(r => setTimeout(r, 1500 * attempt * attempt));
+    try {
+      for (;;) {
+        if (sig.aborted) throw new DOMException('İptal', 'AbortError');
+        try {
+          results[i] = p === 'gemini'
+            ? await sttGemini(c, key, settings, sig)
+            : await sttOpenAI(c, key, settings, def, sig);
+          break;
+        } catch (e) {
+          if (e.name === 'AbortError' || ++attempt >= 3 || !(e.status === 429 || e.status >= 500 || !e.status)) throw e;
+          await new Promise(r => setTimeout(r, 1500 * attempt * attempt));
+        }
       }
-    }
+    } finally { c.release(); }
     done++;
     onProgress(done / chunks.length, `${done} / ${chunks.length} parça`);
   };
   const queue = chunks.map((_, i) => i);
   const conc = Math.min(3, queue.length);
-  await Promise.all(Array.from({ length: conc }, async () => { while (queue.length) await worker(queue.shift()); }));
+  let firstErr = null;
+  try {
+    await Promise.all(Array.from({ length: conc }, async () => {
+      try { while (queue.length && !sig.aborted) await worker(queue.shift()); }
+      catch (e) { if (!firstErr) firstErr = e; queue.length = 0; ac.abort(); }
+    }));
+  } finally { signal?.removeEventListener('abort', onAbort); }
+  if (firstErr) throw firstErr;
   const words = [], segments = [];
   for (const r of results) { words.push(...r.words); segments.push(...r.segments); }
   words.sort((a, b) => a.s - b.s);
@@ -196,10 +213,15 @@ async function sttOpenAI(chunk, key, settings, def, signal) {
   } catch (e) { throw wrapNetwork(e, 'Transkripsiyon'); }
   const data = await asJson(res);
   const off = chunk.offset;
-  const segments = (data.segments || []).map(s => ({ start: s.start + off, end: s.end + off, text: (s.text || '').trim() }));
-  let words = (data.words || []).map(w => ({ w: String(w.word).trim(), s: w.start + off, e: w.end + off })).filter(w => w.w);
+  const num = v => (typeof v === 'number' || typeof v === 'string') && Number.isFinite(+v) ? +v : NaN;
+  const segments = (Array.isArray(data?.segments) ? data.segments : [])
+    .map(s => ({ start: num(s?.start) + off, end: num(s?.end) + off, text: String(s?.text ?? '').trim() }))
+    .filter(s => Number.isFinite(s.start) && Number.isFinite(s.end) && s.text);
+  if (!segments.length && typeof data?.text === 'string' && data.text.trim()) segments.push({ start: off, end: off + chunk.duration, text: data.text.trim() });
+  let words = (Array.isArray(data?.words) ? data.words : [])
+    .map(w => ({ w: String(w?.word ?? '').trim(), s: num(w?.start) + off, e: num(w?.end) + off }))
+    .filter(w => w.w && Number.isFinite(w.s) && Number.isFinite(w.e));
   if (!words.length) words = wordsFromSegments(segments);
-  if (!segments.length && data.text) segments.push({ start: off, end: off + chunk.duration, text: data.text.trim() });
   return { words, segments };
 }
 
@@ -254,8 +276,14 @@ export function parseSubtitleFile(text, name = '') {
   text = text.replace(/^﻿/, '');
   if (/\.json$/i.test(name) || /^\s*[\[{]/.test(text)) {
     const d = JSON.parse(text);
-    const segs = (d.segments || d).map(s => ({ start: +s.start, end: +s.end, text: String(s.text).trim() }));
-    const words = d.words ? d.words.map(w => ({ w: String(w.word ?? w.w).trim(), s: +(w.start ?? w.s), e: +(w.end ?? w.e) })) : wordsFromSegments(segs);
+    const fin = v => (typeof v === 'number' || typeof v === 'string') && v !== '' && Number.isFinite(+v);
+    const rawSegs = Array.isArray(d) ? d : Array.isArray(d?.segments) ? d.segments : [];
+    const segs = rawSegs.filter(s => s && fin(s.start) && fin(s.end) && s.text != null)
+      .map(s => ({ start: +s.start, end: +s.end, text: String(s.text).trim() })).filter(s => s.text);
+    let words = Array.isArray(d?.words) ? d.words.filter(w => w && fin(w.start ?? w.s) && fin(w.end ?? w.e))
+      .map(w => ({ w: String(w.word ?? w.w ?? '').trim(), s: +(w.start ?? w.s), e: +(w.end ?? w.e) })).filter(w => w.w) : [];
+    if (!words.length) words = wordsFromSegments(segs);
+    if (!segs.length && !words.length) throw new Error('JSON dosyasında geçerli zaman damgalı satır bulunamadı.');
     return { segments: segs, words, source: 'import' };
   }
   const blocks = text.replace(/\r/g, '').split(/\n\n+/);
@@ -311,7 +339,7 @@ export async function chat(settings, system, user, { json = true, signal, maxTok
       const d = await asJson(res);
       return (d.content || []).map(c => c.text || '').join('');
     }
-    const base = (p === 'custom' || p === 'ollama' ? (settings.llmBaseUrl || def.base) : def.base).replace(/\/$/, '');
+    const base = (p === 'custom' || p === 'ollama' ? (settings.llmBaseByProvider?.[p] || def.base) : def.base).replace(/\/$/, '');
     if (!base) throw new AIError('Özel sağlayıcı için temel adres (base URL) gerekli.');
     const headers = { 'Content-Type': 'application/json' };
     if (key) headers.Authorization = `Bearer ${key}`;
@@ -336,7 +364,7 @@ export async function listModels(settings) {
       return (d.data || []).map(m => m.id);
     }
     if (p === 'openrouter') return await openRouterFreeModels(true);
-    const base = (p === 'custom' || p === 'ollama' ? (settings.llmBaseUrl || def.base) : def.base).replace(/\/$/, '');
+    const base = (p === 'custom' || p === 'ollama' ? (settings.llmBaseByProvider?.[p] || def.base) : def.base).replace(/\/$/, '');
     const d = await asJson(await fetch(`${base}/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {} }));
     return (d.data || []).map(m => m.id).sort();
   } catch (e) { throw wrapNetwork(e, def.label); }
@@ -367,7 +395,7 @@ Uzun bir yayının zaman damgalı transkriptini inceleyip tek başına anlaşıl
 Yanıtın her zaman geçerli JSON olmalı.`;
 
 function buildTranscriptText(transcript, from = 0, to = Infinity) {
-  const segs = transcript.segments?.length ? transcript.segments : [];
+  const segs = transcript?.segments?.length ? transcript.segments : [];
   return segs.filter(s => s.end > from && s.start < to).map(s => `[${s.start.toFixed(1)}] ${s.text}`).join('\n');
 }
 
@@ -446,6 +474,12 @@ function postProcess(raw, tr, duration, settings) {
       let we = null;
       for (let i = words.length - 1; i >= 0; i--) if (words[i].s < e + 0.3) { we = words[i]; break; }
       if (we && Math.abs(we.e - e) < 2.5) e = Math.min(duration, we.e + 0.25);
+    }
+    // ayarlardaki azami süre kesin sınırdır; mümkünse son tam kelimede bitir
+    if (e - s > maxD) {
+      let cut = s + maxD;
+      for (let i = words.length - 1; i >= 0; i--) if (words[i].e <= s + maxD && words[i].e > s + maxD - 4) { cut = words[i].e + 0.05; break; }
+      e = Math.min(cut, s + maxD);
     }
     if (e - s < 3) continue;
     clips.push({
