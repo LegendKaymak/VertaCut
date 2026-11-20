@@ -14,6 +14,9 @@ VertaCut, uzun yayın videolarından 9:16 dikey klipler çıkaran, tamamen taray
 - `js/audio.js`: ses çözme, hype haritası, jump-cut, dolgu kelimeleri, teaser
 - `js/ai.js`: transkripsiyon ve LLM sağlayıcıları (Gemini otomatik model dahil)
 - `js/sfx.js`: pop efekti ve müzik kısma
+- `js/mp4audio.js`: MP4/MOV ses izini WebCodecs ile hızlı çözme
+- `js/glossary.js`: kanal sözlüğü, toplu düzeltme ve öneriler
+- `js/variants.js`: Shorts/Reels/TikTok sürümleri ve ZIP paketi
 - `js/db.js`: IndexedDB projeleri ve ayarlar
 - `sw.js`: service worker (dosya eklenirse `SHELL` listesine ve `VERSION`'a dikkat)
 

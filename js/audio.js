@@ -1,5 +1,6 @@
 // VertaCut — ses çözme, hype haritası, WAV parçalama, sessizlik analizi
 import { clamp, sleep } from './util.js';
+import { extractMp4Audio, fastAudioSupported } from './mp4audio.js';
 
 export const TARGET_SR = 16000;
 export const HOP = 0.25; // enerji çözünürlüğü (sn)
@@ -8,7 +9,17 @@ export const HOP = 0.25; // enerji çözünürlüğü (sn)
  * Videonun sesini 16 kHz mono Float32Array olarak çözer.
  * Küçük/orta dosyalarda decodeAudioData, büyüklerde (veya hata olursa) hızlı oynatmalı tarama.
  */
-export async function extractAudio(file, videoUrl, onProgress = () => {}, signal) {
+export async function extractAudio(file, videoUrl, onProgress = () => {}, signal, { fast = true } = {}) {
+  // Hızlı mod: MP4/MOV'da yalnızca ses izini okuyup WebCodecs ile çöz (her boyutta, dakikalar içinde)
+  if (fast && file && fastAudioSupported(file)) {
+    try {
+      onProgress(0.01, 'Ses izi okunuyor');
+      return await extractMp4Audio(file, onProgress, signal);
+    } catch (e) {
+      if (e?.name === 'AbortError') throw e;
+      console.warn('Hızlı ses çıkarma kullanılamadı, normal yönteme geçiliyor:', e?.message || e);
+    }
+  }
   const BIG = 1.4 * 1024 ** 3;
   if (file && file.size < BIG) {
     try {

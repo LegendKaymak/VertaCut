@@ -18,6 +18,7 @@ VertaCut by LegendKaymak finds the best moments in a long stream, places your fa
 - Works without an API key: detects hype moments from audio reactions
 - Import Twitch / YouTube chat logs; chat spikes feed the hype map and the AI
 - One-click highlight montage from the top-scoring moments
+- Candidate comparison: alternative cuts of the same moment grouped together, with speech start, audio peak and chat peak markers; preview tight, original and context versions and pick one
 - Mark clips manually with `I` / `O`, by dragging on the hype map, or by selecting transcript text
 
 **Editing**
@@ -27,9 +28,11 @@ VertaCut by LegendKaymak finds the best moments in a long stream, places your fa
 - Jump-cut silences and remove filler words (uh, um, hmm…)
 - Teaser intro: the 3 punchiest moments with flash transitions
 - Undo / redo, keyboard shortcuts (`?`)
+- Fast audio extraction for MP4/MOV: reads only the audio track with WebCodecs, a 2-hour stream is ready in minutes
 
 **Captions and text**
 - 7 animated caption styles, kinetic emphasis, per-word editing and caption translation
+- Channel glossary: save player names and game terms once, fix every misspelling in one step (with undo); terms are also sent to the transcription service as hints
 - Hook card designer: 8 styles, colors, font, size, tilt, corner radius, emoji and 5 entrance animations; the AI designs it to match the content
 - Logo watermark (9 positions), channel name, progress bar
 - TikTok / Shorts / Reels safe-zone preview
@@ -42,6 +45,8 @@ VertaCut by LegendKaymak finds the best moments in a long stream, places your fa
 **Publishing**
 - MP4 export (H.264), SRT download, cover image (PNG)
 - Platform titles, descriptions and hashtags; YouTube chapters for the full stream
+- Platform versions: separate hook, caption position and text for Shorts, Reels and TikTok, downloaded together as one ZIP with covers and descriptions
+- Every extra feature can be turned on or off in Settings → Features
 - Share directly from your phone
 - Installable as an app (PWA), works offline, mobile mode, 5 themes
 
@@ -88,6 +93,7 @@ VertaCut by LegendKaymak, uzun bir yayının en güçlü anlarını bulur, facec
 - API anahtarı olmadan da çalışır: ses tepkilerinden hype anlarını bulur
 - Twitch / YouTube sohbet kaydı içe aktarma; sohbet patlamaları hype haritasına ve AI'ya eklenir
 - En yüksek puanlı anlardan tek tıkla montaj
+- Aday karşılaştırma: aynı ana ait kesimler tek grupta; konuşma başlangıcı, ses ve sohbet zirvesi işaretleri; sıkı, asıl ve bağlamlı sürümleri dinleyip birini seç
 - `I` / `O` ile, hype haritasında sürükleyerek ya da transkriptten metin seçerek elle klip
 
 **Düzenleme**
@@ -97,9 +103,11 @@ VertaCut by LegendKaymak, uzun bir yayının en güçlü anlarını bulur, facec
 - Sessiz boşlukları kesme ve dolgu kelimelerini (ııı, eee, hmm…) temizleme
 - Teaser girişi: en vurucu 3 an, flaş geçişlerle
 - Geri al / yinele, klavye kısayolları (`?`)
+- MP4/MOV için hızlı ses çıkarma: WebCodecs ile yalnızca ses izi okunur, 2 saatlik yayın dakikalar içinde hazır
 
 **Altyazı ve metin**
 - 7 animasyonlu altyazı stili, kinetik vurgu, kelime kelime düzenleme ve altyazı çevirisi
+- Kanal sözlüğü: oyuncu adlarını ve oyun terimlerini bir kez kaydet, yanlış yazımları tek adımda düzelt (geri alınabilir); terimler yazıya dökme servisine ipucu olarak da gider
 - Kanca kartı tasarımcısı: 8 stil, renk, yazı tipi, boyut, eğim, köşe, emoji ve 5 giriş animasyonu; AI içeriğe göre kendisi tasarlar
 - Logo filigranı (9 konum), kanal adı, ilerleme çubuğu
 - TikTok / Shorts / Reels güvenli alan önizlemesi
@@ -112,6 +120,8 @@ VertaCut by LegendKaymak, uzun bir yayının en güçlü anlarını bulur, facec
 **Yayınlama**
 - MP4 (H.264) dışa aktarma, SRT indirme, kapak görseli (PNG)
 - Platformlara özel başlık, açıklama ve etiketler; uzun yayın için YouTube bölümleri
+- Platform sürümleri: Shorts, Reels ve TikTok için ayrı kanca, altyazı konumu ve metin; kapak ve açıklamalarla birlikte tek ZIP paketi
+- Ek özelliklerin her biri Ayarlar → Özellikler'den açılıp kapatılabilir
 - Telefondan doğrudan paylaşma
 - Uygulama olarak yüklenebilir (PWA), çevrimdışı açılır, mobil mod, 5 tema
 

@@ -1,6 +1,7 @@
 // VertaCut — AI sağlayıcıları: konuşmayı yazıya dökme (STT) + klip analizi (LLM)
 import { wavChunks, topPeaks } from './audio.js';
 import { clamp, fmtTime } from './util.js';
+import { sttHint } from './glossary.js';
 
 export const LLM_PROVIDERS = {
   gemini:     { label: 'Google Gemini', model: 'auto', keyUrl: 'https://aistudio.google.com/apikey' },
@@ -207,6 +208,9 @@ async function sttOpenAI(chunk, key, settings, def, signal) {
   fd.append('timestamp_granularities[]', 'word');
   fd.append('timestamp_granularities[]', 'segment');
   if (settings.language && settings.language !== 'auto') fd.append('language', settings.language);
+  // kanal sözlüğü: özel adların doğru yazılması için ipucu
+  const hint = settings.features?.glossary !== false ? sttHint(settings.glossary) : '';
+  if (hint) fd.append('prompt', hint);
   let res;
   try {
     res = await fetch(`${base}/audio/transcriptions`, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: fd, signal });
@@ -227,7 +231,8 @@ async function sttOpenAI(chunk, key, settings, def, signal) {
 
 async function sttGemini(chunk, key, settings, signal) {
   const b64 = await blobToBase64(chunk.blob);
-  const lang = settings.language && settings.language !== 'auto' ? `Dil: ${settings.language}.` : '';
+  const lang = (settings.language && settings.language !== 'auto' ? `Dil: ${settings.language}.` : '')
+    + (settings.features?.glossary !== false && sttHint(settings.glossary) ? ` Şu özel adları ve terimleri tam bu yazımla yaz: ${sttHint(settings.glossary)}.` : '');
   const prompt = `Bu ses kaydını kelimesi kelimesine yazıya dök. ${lang} Konuşmayı 2-8 saniyelik doğal cümle parçalarına böl.
 Sadece şu JSON'u döndür: {"segments":[{"start":saniye,"end":saniye,"text":"..."}]}. Zamanlar kaydın başından itibaren saniye cinsinden ondalıklı olsun. Sessiz bölümleri atla.`;
   const model = settings.sttModel || STT_PROVIDERS.gemini.model;

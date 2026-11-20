@@ -4,6 +4,10 @@ import { DB, loadSettings, saveSettings } from './db.js';
 import { extractAudio, computeEnergy, findHypeMoments, HOP, DEFAULT_FILLERS, isFiller } from './audio.js';
 import { transcribe, parseSubtitleFile, analyzeClips, regenerateMeta, suggestHooks, translateLines, designHook, youtubeChapters, listModels, testConnection, testKey, lastGeminiModel, lastOpenRouterModel, LLM_PROVIDERS, STT_PROVIDERS, CONTENT_TYPES } from './ai.js';
 const AUTO_MODEL = { gemini: 'auto', openrouter: 'free' };
+/** Ayarlar → Özellikler'den açılıp kapatılabilen özellikler (varsayılan: açık) */
+const feat = k => S.settings.features?.[k] !== false;
+import { PLATFORMS, variantValues, applyVariant, isCustom, makeZip } from './variants.js';
+import { findIn, replaceAt, replaceInText, suggestions, norm as gNorm } from './glossary.js';
 import { Compositor, LAYOUTS, DEFAULT_REGIONS, clipWords, ownWords, setLogoImage, hasLogoImage, ratioH } from './render.js';
 import { CAPTION_PRESETS, CAPTION_FONTS, defaultCaptionStyle, buildPages, drawCaptions } from './captions.js';
 import { playSfx, sfxEvents, crossed, duckFactor } from './sfx.js';
@@ -508,9 +512,9 @@ async function runAudio() {
   if (!S.file) return;
   const signal = startJob('audio');
   try {
-    const { samples, sampleRate, method } = await extractAudio(S.file, S.videoUrl, (p, l) => setProgress(p, l, l === 'Ses çözülüyor'), signal);
+    const { samples, sampleRate, method } = await extractAudio(S.file, S.videoUrl, (p, l) => setProgress(p, l, l === 'Ses çözülüyor'), signal, { fast: feat('fastAudio') });
     if (signal.aborted) return;
-    S.samples = samples; S.sr = sampleRate;
+    S.samples = samples; S.sr = sampleRate; S.audioMethod = method;
     S.project.energy = computeEnergy(samples, sampleRate);
     saveProject();
     endJob(); drawHype();
@@ -630,7 +634,9 @@ function replaceAuto(source, found) {
   S.project.clips = S.project.clips.filter(c => c.source !== source || c.touched || c.exported);
   let added = 0;
   for (const f of found) {
-    if (S.project.clips.some(c => !c.segments && overlapRatio(c, f) > 0.6)) continue;
+    const near = S.project.clips.filter(c => !c.segments && overlapRatio(c, f) > 0.6);
+    // karşılaştırma açıksa aynı ana ait farklı kesimler aday olarak saklanır (an başına en fazla 3)
+    if (near.length && (!feat('compare') || near.length >= 3 || near.some(c => Math.abs(c.start - f.start) < 1.5 && Math.abs(c.end - f.end) < 1.5))) continue;
     const design = S.settings.hookAuto === false ? { hookStyle: undefined, hookEmoji: '' } : (f.hookStyle ? { hookStyle: f.hookStyle, hookEmoji: f.hookEmoji || '' } : autoHookStyle(f.category));
     addClip({ ...f, ...design, source }, false); added++;
   }
@@ -671,13 +677,28 @@ $$('.clips-head .seg button').forEach(b => b.addEventListener('click', () => {
   S.sort = b.dataset.sort; renderClips();
 }));
 
+/** Aynı ana ait (yarıdan fazlası örtüşen) klipleri gruplar; ilk öğe grubun öne çıkanıdır */
+function clipGroups(list) {
+  const groups = [], seen = new Set();
+  for (const c of list) {
+    if (seen.has(c.id)) continue;
+    const g = [c]; seen.add(c.id);
+    if (!c.segments) for (const o of list) if (!seen.has(o.id) && !o.segments && g.some(x => overlapRatio(x, o) > 0.5)) { g.push(o); seen.add(o.id); }
+    g.sort((a, b) => (b.touched || b.exported ? 1 : 0) - (a.touched || a.exported ? 1 : 0) || (b.score ?? -1) - (a.score ?? -1));
+    groups.push(g);
+  }
+  return groups;
+}
 function renderClips() {
   const list = sortedClips();
   $('#clipCount').textContent = list.length;
   $('#mClipBadge').hidden = !list.length; $('#mClipBadge').textContent = list.length;
   $('#montageBtn').hidden = list.filter(c => !c.segments).length < 2;
   $('#clipsEmpty').hidden = list.length > 0;
-  $('#clipList').innerHTML = list.map(c => {
+  const cmp = feat('compare');
+  const groups = cmp ? clipGroups(list) : list.map(c => [c]);
+  $('#clipList').innerHTML = groups.map(g => {
+    const c = g[0], alts = g.length - 1, open = cmp && S.cmpOpen === c.id;
     const d = c.segments?.length ? c.segments.reduce((a, [x, y]) => a + (y - x), 0) : c.end - c.start;
     const sc = c.score == null ? '' : `<span class="score ${c.score >= 80 ? 'hi' : c.score >= 60 ? 'mid' : ''}" title="Viral potansiyel puanı">${c.score}</span>`;
     return `<li class="clip ${S.ed?.clip.id === c.id ? 'active' : ''}" data-id="${c.id}" tabindex="0">
@@ -689,13 +710,16 @@ function renderClips() {
         <div class="clip-foot">
           <span class="tc">${fmtTime(c.start)}–${fmtTime(c.end)}</span>
           ${c.exported ? `<span class="clip-status"><svg class="ic"><use href="#i-check"/></svg>Aktarıldı</span>` : ''}
+          ${cmp && !c.segments ? `<button class="btn ${alts ? 'tonal' : 'text'} sm cmp-btn ${open ? 'on' : ''}" data-act="cmp" aria-expanded="${open}" aria-label="Sürümleri karşılaştır" title="Sürümleri karşılaştır"><svg class="ic"><use href="#i-layers"/></svg>${alts ? `<span>${alts + 1} aday</span>` : ''}</button>` : ''}
           <button class="btn icon sm" data-act="play" aria-label="Kaynakta oynat" title="Kaynakta oynat"><svg class="ic"><use href="#i-play"/></svg></button>
           <button class="btn icon sm" data-act="export" aria-label="Dışa aktar" title="Dışa aktar"><svg class="ic"><use href="#i-download"/></svg></button>
           <button class="btn icon sm" data-act="del" aria-label="Klibi sil" title="Sil"><svg class="ic"><use href="#i-trash"/></svg></button>
         </div>
       </div>
+      ${open ? comparePanel(c, g) : ''}
     </li>`;
   }).join('');
+  if (cmp && S.cmpOpen) drawCmpTimeline();
   renderPipeline();
 }
 
@@ -708,6 +732,8 @@ $('#clipList').addEventListener('click', e => {
     mainVideo.currentTime = clip.start; S.previewEnd = clip.end; mainVideo.play(); return;
   }
   if (act === 'export') { enqueue([clip]); return; }
+  if (act === 'cmp') { S.cmpOpen = S.cmpOpen === clip.id ? null : clip.id; renderClips(); return; }
+  if (e.target.closest('.cmp')) { compareAction(e, clip); return; }
   if (act === 'del') {
     const idx = S.project.clips.indexOf(clip);
     S.project.clips.splice(idx, 1);
@@ -718,6 +744,116 @@ $('#clipList').addEventListener('click', e => {
   openEditor(clip.id);
 });
 $('#clipList').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.classList.contains('clip')) openEditor(e.target.dataset.id); });
+
+// --- aday karşılaştırma ---
+/** Klip içindeki işaretler: konuşmanın başladığı yer, ses zirvesi, sohbet zirvesi */
+function clipMarks(c) {
+  const p = S.project, out = [];
+  const segs = p.transcript?.segments || [];
+  const sp = segs.find(s => s.end > c.start - 0.2 && s.start < c.end);
+  if (sp) out.push({ kind: 'speech', t: Math.max(c.start - 15, sp.start), label: 'Konuşma başlıyor' });
+  const peakIn = (arr, lag = 0) => {
+    if (!arr?.length) return null;
+    let best = -1, bi = -1;
+    for (let i = Math.max(0, Math.floor(c.start / HOP)); i < Math.min(arr.length, Math.ceil(c.end / HOP)); i++) if (arr[i] > best) { best = arr[i]; bi = i; }
+    return bi < 0 || best < 0.2 ? null : bi * HOP - lag;
+  };
+  const e = peakIn(p.energy); if (e != null) out.push({ kind: 'peak', t: e, label: 'Ses zirvesi' });
+  const ch = peakIn(p.chat); if (ch != null) out.push({ kind: 'chat', t: ch, label: 'Sohbet zirvesi' });
+  return out.sort((a, b) => a.t - b.t);
+}
+const snapStart = t => { const w = S.project.transcript?.words; if (!w?.length) return t; const x = w.find(v => v.e > t); return x && Math.abs(x.s - t) < 2 ? Math.max(0, x.s - 0.08) : t; };
+const snapEnd = t => { const w = S.project.transcript?.words; if (!w?.length) return t; let x = null; for (const v of w) { if (v.s < t) x = v; else break; } return x && Math.abs(x.e - t) < 2 ? x.e + 0.2 : t; };
+/** Aynı an için üç kesim önerisi: sıkı, mevcut, bağlamlı */
+function clipVersions(c) {
+  const D = S.project.video.duration, { clipMin, clipMax } = S.settings;
+  const base = c.orig || { start: c.start, end: c.end };
+  const peak = clipMarks(c).find(m => m.kind === 'peak')?.t ?? (base.start + base.end) / 2;
+  const dur = base.end - base.start;
+  const tightLen = clamp(dur * 0.6, Math.min(clipMin, dur), dur);
+  let ts = clamp(peak - tightLen * 0.55, base.start, base.end - tightLen);
+  const tight = { start: snapStart(ts), end: Math.min(base.end, snapEnd(ts + tightLen)) };
+  // bağlam: önceki cümlenin başına kadar geri git (en fazla 10 sn), azami süreyi aşma
+  const segs = S.project.transcript?.segments || [];
+  let cs = Math.max(0, base.start - 6);
+  const prev = [...segs].reverse().find(s => s.start < base.start - 2 && s.start >= base.start - 10);
+  if (prev) cs = prev.start - 0.08;
+  const ctx = { start: Math.max(0, cs), end: Math.min(D, Math.max(base.end, Math.max(0, cs) + Math.min(clipMax, dur + 6))) };
+  if (ctx.end - ctx.start > clipMax) ctx.end = ctx.start + clipMax;
+  return [
+    { id: 'tight', label: 'Sıkı', hint: 'Zirveye odaklı', ...tight },
+    { id: 'orig', label: 'Asıl', hint: 'Bulunan kesim', ...base },
+    { id: 'ctx', label: 'Bağlamlı', hint: 'Öncesiyle birlikte', ...ctx }
+  ].filter((v, i, a) => v.end - v.start >= 3 && a.findIndex(x => Math.abs(x.start - v.start) < 0.5 && Math.abs(x.end - v.end) < 0.5) === i);
+}
+function comparePanel(c, g) {
+  const vs = clipVersions(c), marks = clipMarks(c);
+  const cur = v => Math.abs(v.start - c.start) < 0.3 && Math.abs(v.end - c.end) < 0.3;
+  const markBtn = m => `<button class="cmp-mark ${m.kind}" data-cmp="seek" data-t="${m.t.toFixed(2)}" title="${m.label}, ${fmtTime(m.t)}"><i></i>${m.label} <b>${fmtTime(m.t)}</b></button>`;
+  return `<div class="cmp" role="group" aria-label="Sürümleri karşılaştır">
+    <canvas class="cmp-tl" height="44" aria-hidden="true"></canvas>
+    ${marks.length ? `<div class="cmp-marks">${marks.map(markBtn).join('')}</div>` : '<p class="hint">İşaret için transkript, ses analizi veya sohbet dökümü gerekli.</p>'}
+    <div class="cmp-vers">${vs.map(v => `<div class="cmp-ver ${cur(v) ? 'on' : ''}">
+      <span class="cv-l"><b>${v.label}</b><small>${v.hint}, ${fmtTime(v.end - v.start)}</small></span>
+      <button class="btn icon sm" data-cmp="play" data-s="${v.start.toFixed(2)}" data-e="${v.end.toFixed(2)}" aria-label="${v.label} sürümünü dinle" title="Dinle"><svg class="ic"><use href="#i-play"/></svg></button>
+      <button class="btn ${cur(v) ? 'filled' : 'tonal'} sm" data-cmp="pick" data-s="${v.start.toFixed(2)}" data-e="${v.end.toFixed(2)}" ${cur(v) ? 'disabled' : ''}>${cur(v) ? 'Seçili' : 'Seç'}</button>
+    </div>`).join('')}</div>
+    <div class="cmp-nudge"><span class="muted sm">Başlangıç</span>
+      <button class="btn text sm" data-cmp="nudge" data-d="-2">−2 sn</button><button class="btn text sm" data-cmp="nudge" data-d="-0.5">−0,5</button>
+      <button class="btn text sm" data-cmp="nudge" data-d="0.5">+0,5</button><button class="btn text sm" data-cmp="nudge" data-d="2">+2 sn</button>
+      ${c.orig ? '<button class="btn text sm" data-cmp="reset">Asla dön</button>' : ''}</div>
+    ${g.length > 1 ? `<div class="cmp-alts"><span class="muted sm">Bu anın diğer adayları</span>${g.slice(1).map(o => `<div class="cmp-alt">
+      <span class="cv-l"><b>${escapeHtml(o.title)}</b><small>${fmtTime(o.start)}–${fmtTime(o.end)}${o.score != null ? `, puan ${o.score}` : ''}</small></span>
+      <button class="btn icon sm" data-cmp="play" data-s="${o.start.toFixed(2)}" data-e="${o.end.toFixed(2)}" aria-label="Dinle" title="Dinle"><svg class="ic"><use href="#i-play"/></svg></button>
+      <button class="btn tonal sm" data-cmp="keep" data-id="${o.id}">Bunu seç</button></div>`).join('')}</div>` : ''}
+  </div>`;
+}
+function drawCmpTimeline() {
+  const cv = $('#clipList .cmp-tl'); if (!cv) return;
+  const c = S.project.clips.find(x => x.id === S.cmpOpen); if (!c) return;
+  const w = cv.clientWidth || 260, dpr = Math.min(2, devicePixelRatio || 1);
+  cv.width = w * dpr; cv.height = 44 * dpr;
+  const g = cv.getContext('2d'); g.scale(dpr, dpr);
+  const vs = clipVersions(c);
+  const a = Math.max(0, Math.min(c.start, ...vs.map(v => v.start)) - 4), b = Math.min(S.project.video.duration, Math.max(c.end, ...vs.map(v => v.end)) + 4);
+  const X = t => (t - a) / (b - a) * w;
+  const sig = hypeSignal();
+  g.fillStyle = withAlpha(cssVar('--text'), .18);
+  if (sig?.length) for (let x = 0; x < w; x += 2) { const v = sig[Math.floor((a + (x / w) * (b - a)) / HOP)] || 0; g.fillRect(x, 30 - v * 22, 1.5, v * 22 + 1); }
+  g.fillStyle = withAlpha(cssVar('--primary'), .22); g.fillRect(X(c.start), 2, X(c.end) - X(c.start), 30);
+  g.fillStyle = cssVar('--primary'); g.fillRect(X(c.start), 2, 2, 30); g.fillRect(X(c.end) - 2, 2, 2, 30);
+  const col = { speech: cssVar('--text-2'), peak: cssVar('--primary'), chat: '#F5C542' };
+  for (const m of clipMarks(c)) { g.fillStyle = col[m.kind]; g.beginPath(); g.moveTo(X(m.t) - 5, 42); g.lineTo(X(m.t) + 5, 42); g.lineTo(X(m.t), 34); g.fill(); }
+}
+function playRange(s, e) {
+  if (document.body.classList.contains('m')) setMTab('video');
+  mainVideo.currentTime = s; S.previewEnd = e; mainVideo.play();
+}
+function compareAction(e, clip) {
+  const b = e.target.closest('[data-cmp]'); if (!b) return;
+  const k = b.dataset.cmp;
+  if (k === 'seek') { const t = +b.dataset.t; playRange(Math.max(0, t - 1), Math.min(S.project.video.duration, t + 6)); return; }
+  if (k === 'play') { playRange(+b.dataset.s, +b.dataset.e); return; }
+  const apply = (s, en) => {
+    clip.orig ||= { start: clip.start, end: clip.end };
+    clip.start = clamp(s, 0, clip.end - 1); clip.end = clamp(en, clip.start + 1, S.project.video.duration);
+    clip.touched = true; clip._rev = (clip._rev || 0) + 1; clip.thumbRev = null;
+    saveProject(); renderClips(); drawHype(); queueThumbs();
+  };
+  if (k === 'pick') { apply(+b.dataset.s, +b.dataset.e); playRange(clip.start, clip.end); }
+  else if (k === 'nudge') { apply(clip.start + +b.dataset.d, clip.end); playRange(clip.start, Math.min(clip.end, clip.start + 5)); }
+  else if (k === 'reset') { const o = clip.orig; delete clip.orig; apply(o.start, o.end); delete clip.orig; saveProject(); }
+  else if (k === 'keep') {
+    const keep = S.project.clips.find(c => c.id === b.dataset.id); if (!keep) return;
+    const group = clipGroups(sortedClips()).find(g => g.includes(keep)) || [];
+    const removed = group.filter(c => c !== keep);
+    const before = [...S.project.clips];
+    S.project.clips = S.project.clips.filter(c => !removed.includes(c));
+    keep.touched = true; S.cmpOpen = null;
+    saveProject(); renderClips(); drawHype();
+    snack(`Seçildi, ${removed.length} aday kaldırıldı`, { action: 'Geri al', onAction: () => { S.project.clips = before; saveProject(); renderClips(); drawHype(); } });
+  }
+}
 
 // --- küçük resimler (9:16 kompozit) ---
 const thumbVideo = document.createElement('video');
@@ -986,7 +1122,7 @@ function openEditor(id) {
   if (!clip) return;
   if (!S.file) return snack('Önce videoyu yeniden seç.', { err: true });
   mainVideo.pause();
-  S.ed = { clip, ranges: rangesFor(clip, S.project), hist: { undo: [], redo: [], last: snapshot(clip), timer: null } };
+  S.ed = { clip, variant: 'base', ranges: rangesFor(clip, S.project), hist: { undo: [], redo: [], last: snapshot(clip), timer: null } };
   updateUndoBtns();
   S.ed.words = clipWords(clip, S.project.transcript);
   S.ed.events = sfxEvents(clip, S.ed.words, S.ed.ranges);
@@ -1068,7 +1204,7 @@ function edLoop() {
     }
   }
   const prog = progressAtSeq(rs, t, S.ed.seg);
-  edComp.draw(edVideo, c, S.project, t, prog, null, rs);
+  edComp.draw(edVideo, S.ed.variant && S.ed.variant !== 'base' ? applyVariant(c, S.ed.variant) : c, S.project, t, prog, null, rs);
   if (S.safe && (c.ratio || '9:16') === '9:16') drawSafeZone(edComp.ctx, edCanvas.width, edCanvas.height, S.safe);
   $('#edTc').textContent = `${fmtTime(Math.max(0, prog * outDuration(rs)))} / ${fmtTime(outDuration(rs))}`;
   const win = S.ed.win;
@@ -1370,6 +1506,7 @@ function syncInspector() {
   $('#trackOn').checked = !!c.track; $('#fillersOn').checked = !!c.fillers; $('#cleanOn').checked = !!c.cleanAudio; $('#teaserOn').checked = !!c.teaser;
   $('#progOn').checked = !!c.progressOn; $('#wmText').value = c.watermark || '';
   $('#shTitle').value = c.title; $('#shDesc').value = c.description || ''; $('#shTags').value = (c.hashtags || []).join(' ');
+  syncVariants();
   $('#edReason').innerHTML = c.reason ? `${c.score != null ? `<b>${c.score}/100</b> ` : ''}${escapeHtml(c.reason)}` : 'Bu klip elle oluşturuldu. AI ile başlık ve etiket yazdırabilirsin.';
   if (!$('[data-panel="words"]').hidden) renderWords();
   updateTrimInfo();
@@ -1701,6 +1838,108 @@ $('#chatInput').addEventListener('change', async e => {
   } catch (err) { snack(err.message, { err: true }); }
 });
 
+// ------------------------------------------------------------------ KANAL SÖZLÜĞÜ
+let glossHits = [];
+$('#glossBtn').addEventListener('click', openGlossary);
+function openGlossary() {
+  renderGlossTerms(); renderGlossSuggest();
+  $('#glossHits').innerHTML = S.project?.transcript ? '' : '<p class="hint">Toplu düzeltme için önce transkript oluştur. Sözlüğü şimdiden doldurabilirsin; yazıya dökmede kullanılır.</p>';
+  glossHits = []; updateGlossApply();
+  $('#glossDlg').showModal();
+}
+const glossary = () => (S.settings.glossary ||= []);
+function renderGlossTerms() {
+  const g = glossary();
+  $('#glossTerms').innerHTML = g.length ? g.map((t, i) => `<span class="chip gloss-term">${escapeHtml(t.term)}<button data-gdel="${i}" aria-label="${escapeHtml(t.term)} terimini sil" title="Sil"><svg class="ic sm"><use href="#i-close"/></svg></button></span>`).join('')
+    : '<span class="muted sm">Henüz terim yok. Sık yanlış yazılan adları ekle.</span>';
+  $('#glossList').innerHTML = g.map(t => `<option value="${escapeHtml(t.term)}">`).join('');
+}
+function addTerm(term, wrong) {
+  term = String(term || '').trim(); if (!term) return;
+  const g = glossary();
+  let t = g.find(x => gNorm(x.term) === gNorm(term));
+  if (!t) { t = { term, wrong: [] }; g.push(t); }
+  if (wrong && gNorm(wrong) !== gNorm(term) && !t.wrong.some(w => gNorm(w) === gNorm(wrong))) t.wrong.push(String(wrong).trim());
+  saveSettings(S.settings);
+}
+function renderGlossSuggest() {
+  const sug = S.project?.transcript ? suggestions(S.project.transcript.words, glossary()) : [];
+  $('#glossSuggestWrap').hidden = !sug.length;
+  $('#glossSuggest').innerHTML = sug.map(x => `<button class="chip" data-gsug data-from="${escapeHtml(x.from)}" data-to="${escapeHtml(x.to)}"><s>${escapeHtml(x.from)}</s> → <b>${escapeHtml(x.to)}</b> <small>${x.count} yer</small></button>`).join('');
+}
+$('#glossAdd').addEventListener('click', () => { addTerm($('#glossNew').value); $('#glossNew').value = ''; renderGlossTerms(); renderGlossSuggest(); });
+$('#glossNew').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#glossAdd').click(); } });
+$('#glossTerms').addEventListener('click', e => {
+  const b = e.target.closest('[data-gdel]'); if (!b) return;
+  glossary().splice(+b.dataset.gdel, 1); saveSettings(S.settings); renderGlossTerms(); renderGlossSuggest();
+});
+$('#glossSuggest').addEventListener('click', e => {
+  const b = e.target.closest('[data-gsug]'); if (!b) return;
+  $('#glossFrom').value = b.dataset.from; $('#glossTo').value = b.dataset.to; findGloss();
+});
+$('#glossFind').addEventListener('click', findGloss);
+['glossFrom', 'glossTo'].forEach(id => $('#' + id).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); findGloss(); } }));
+/** Transkriptte ve klip altyazılarında (düzenlenmiş kelimeler) eşleşmeleri listeler */
+function findGloss() {
+  const from = $('#glossFrom').value.trim(), to = $('#glossTo').value.trim();
+  const tr = S.project?.transcript;
+  if (!tr) return;
+  if (!from) { $('#glossHits').innerHTML = '<p class="hint">Yanlış yazılan kelimeyi gir.</p>'; return; }
+  glossHits = [];
+  const ctx = (ws, i, n) => {
+    const a = ws.slice(Math.max(0, i - 4), i).map(w => escapeHtml(w.w)).join(' ');
+    const m = ws.slice(i, i + n).map(w => escapeHtml(w.w)).join(' ');
+    const z = ws.slice(i + n, i + n + 4).map(w => escapeHtml(w.w)).join(' ');
+    return `${a} <mark>${m}</mark> ${z}`;
+  };
+  for (const h of findIn(tr.words, from)) glossHits.push({ where: 'tx', i: h.i, n: h.n, t: tr.words[h.i].s, html: ctx(tr.words, h.i, h.n) });
+  for (const c of S.project.clips) if (c.words) for (const h of findIn(c.words, from)) glossHits.push({ where: c.id, i: h.i, n: h.n, t: c.words[h.i].s, html: ctx(c.words, h.i, h.n), clip: c.title });
+  $('#glossHits').innerHTML = glossHits.length
+    ? `<p class="muted sm">${glossHits.length} yer bulundu${to ? `; seçilenler <b>${escapeHtml(to)}</b> olarak düzeltilecek` : '. Doğru yazımı da gir'}.</p>` +
+      glossHits.map((h, k) => `<label class="gloss-hit"><input type="checkbox" data-gk="${k}" checked><button type="button" class="ts" data-gt="${h.t}">${fmtTime(h.t)}</button><span>${h.html}${h.clip ? ` <small class="muted">(klip: ${escapeHtml(h.clip)})</small>` : ''}</span></label>`).join('')
+    : '<p class="hint">Eşleşme bulunamadı.</p>';
+  $('#glossAll').checked = true;
+  updateGlossApply();
+}
+function updateGlossApply() {
+  const n = $$('#glossHits [data-gk]:checked').length;
+  $('#glossApply').disabled = !n || !$('#glossTo').value.trim();
+  $('#glossApply').lastChild.textContent = n ? `Seçilenleri düzelt (${n})` : 'Seçilenleri düzelt';
+}
+$('#glossTo').addEventListener('input', updateGlossApply);
+$('#glossHits').addEventListener('change', updateGlossApply);
+$('#glossHits').addEventListener('click', e => { const b = e.target.closest('[data-gt]'); if (b) { e.preventDefault(); mainVideo.currentTime = +b.dataset.gt; } });
+$('#glossAll').addEventListener('change', e => { $$('#glossHits [data-gk]').forEach(x => { x.checked = e.target.checked; }); updateGlossApply(); });
+$('#glossApply').addEventListener('click', () => {
+  const from = $('#glossFrom').value.trim(), to = $('#glossTo').value.trim();
+  const picked = $$('#glossHits [data-gk]:checked').map(x => glossHits[+x.dataset.gk]);
+  if (!picked.length || !to) return;
+  const p = S.project, tr = p.transcript;
+  // tek adımda geri alınabilsin diye önceki hâli sakla
+  const before = { words: structuredClone(tr.words), segments: structuredClone(tr.segments || []), clips: p.clips.filter(c => c.words).map(c => [c, structuredClone(c.words)]) };
+  const byList = new Map();
+  for (const h of picked) { const k = h.where; if (!byList.has(k)) byList.set(k, []); byList.get(k).push(h); }
+  let n = 0;
+  for (const [k, hs] of byList) {
+    const ws = k === 'tx' ? tr.words : p.clips.find(c => c.id === k)?.words;
+    if (!ws) continue;
+    hs.sort((a, b) => b.i - a.i); // sondan başa: birleşen kelimeler indeksleri kaydırmasın
+    for (const h of hs) { replaceAt(ws, h.i, h.n, to); n++; }
+  }
+  // seçilen transkript yerlerinin geçtiği segment metinlerini de güncelle
+  const times = picked.filter(h => h.where === 'tx').map(h => h.t);
+  for (const sg of tr.segments || []) if (times.some(t => t >= sg.start - 0.05 && t < sg.end + 0.05)) sg.text = replaceInText(sg.text, from, to);
+  addTerm(to, from);
+  const bump = () => { tr._v = Date.now(); p.clips.forEach(c => { c._rev = (c._rev || 0) + 1; c.thumbRev = null; }); saveProject(); renderTranscript(); renderClips(); queueThumbs(); };
+  bump();
+  $('#glossDlg').close();
+  snack(`${n} yer düzeltildi: ${to}`, { action: 'Geri al', onAction: () => {
+    tr.words = before.words; tr.segments = before.segments;
+    for (const [c, w] of before.clips) c.words = w;
+    bump(); snack('Toplu düzeltme geri alındı');
+  } });
+});
+
 // ------------------------------------------------------------------ MONTAJ
 $('#montageBtn').addEventListener('click', createMontage);
 function createMontage() {
@@ -2013,6 +2252,93 @@ $('#trackOn').addEventListener('change', async e => {
   touch();
 });
 
+// ------------------------------------------------------------------ PLATFORM SÜRÜMLERİ
+function syncVariants() {
+  if (!S.ed) return;
+  const on = feat('variants'); $('#variantsBox').hidden = !on;
+  if (!on) { S.ed.variant = 'base'; return; }
+  const c = S.ed.clip, v = S.ed.variant || 'base';
+  $$('#varSeg button').forEach(b => {
+    b.classList.toggle('on', b.dataset.v === v); b.setAttribute('aria-checked', b.dataset.v === v);
+    b.classList.toggle('custom', b.dataset.v !== 'base' && isCustom(c, b.dataset.v));
+  });
+  $('#varFields').hidden = v === 'base';
+  if (v === 'base') return;
+  const val = variantValues(c, v);
+  $('#vTitle').value = val.title; $('#vDesc').value = val.description; $('#vTags').value = val.hashtags.join(' ');
+  $('#vHook').value = val.hook;
+  const r = (id, x) => { const el = $('#' + id); el.value = x; fillRange(el); };
+  r('vHookY', val.hookY); r('vCapY', val.capY);
+  $('#vReset').disabled = !isCustom(c, v);
+}
+$('#varSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || !S.ed) return;
+  S.ed.variant = b.dataset.v; syncVariants();
+  // sürüm seçilince o platformun güvenli alanını da göster
+  if ((S.ed.clip.ratio || '9:16') === '9:16') { S.safe = b.dataset.v === 'base' ? S.safe : b.dataset.v; segOn('#safeZone', S.safe || ''); }
+  if (b.dataset.v !== 'base') edVideo.currentTime = Math.min(S.ed.clip.end - 0.1, (S.ed.ranges[0]?.[0] ?? S.ed.clip.start) + 0.8);
+});
+const setVar = (key, val) => {
+  const c = S.ed.clip, v = S.ed.variant; if (!v || v === 'base') return;
+  c.variants ||= {}; c.variants[v] = { ...(c.variants[v] || {}), [key]: val };
+  touch(false);
+  $$('#varSeg button').forEach(b => b.classList.toggle('custom', b.dataset.v !== 'base' && isCustom(c, b.dataset.v)));
+  $('#vReset').disabled = false;
+};
+$('#vTitle').addEventListener('input', e => setVar('title', e.target.value));
+$('#vDesc').addEventListener('input', e => setVar('description', e.target.value));
+$('#vTags').addEventListener('input', e => setVar('hashtags', e.target.value.split(/[\s,]+/).filter(Boolean).map(h => h.startsWith('#') ? h : '#' + h)));
+$('#vHook').addEventListener('input', e => { setVar('hook', e.target.value); edVideo.currentTime = (S.ed.ranges[0]?.[0] ?? S.ed.clip.start) + 0.8; });
+$('#vHookY').addEventListener('input', e => { setVar('hookY', +e.target.value); fillRange(e.target); edVideo.currentTime = (S.ed.ranges[0]?.[0] ?? S.ed.clip.start) + 0.8; });
+$('#vCapY').addEventListener('input', e => { setVar('capY', +e.target.value); fillRange(e.target); });
+$('#vReset').addEventListener('click', () => {
+  const c = S.ed.clip, v = S.ed.variant; if (!c.variants?.[v]) return;
+  delete c.variants[v]; touch(false); syncVariants();
+  snack(`${PLATFORMS[v].short} sürümü ortak ayarlara döndü`);
+});
+$('#pkgBtn').addEventListener('click', () => enqueuePackage(S.ed.clip));
+/** Üç platform sürümünü sıraya alır; hepsi bitince video, kapak ve metinler tek ZIP olarak iner */
+function enqueuePackage(clip) {
+  if (!S.file) return snack('Önce videoyu yeniden seç.', { err: true });
+  if (pickMime(S.settings.exportFormat) === null) return snack('Bu tarayıcı video kaydını desteklemiyor. Chrome veya Edge kullan.', { err: true });
+  const pkg = uid();
+  for (const id of Object.keys(PLATFORMS)) S.queue.push({ id: uid(), clipId: clip.id, variant: id, pkg, name: `${clip.title} (${PLATFORMS[id].short})`, state: 'waiting', progress: 0, project: S.project, videoUrl: S.videoUrl, settings: { ...S.settings } });
+  $('#queue').hidden = false; renderQueue();
+  snack('3 platform sürümü sıraya alındı. Bitince tek ZIP dosyası inecek; bu sekmeyi açık tut.');
+  processQueue();
+}
+/** Klibin kapak görseli: kanca metniyle, klibin ilk saniyesinden bir kare */
+async function renderCover(clipV, project, videoUrl, t) {
+  await loadFonts();
+  const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.playsInline = true; v.src = videoUrl;
+  try {
+    await new Promise((r, j) => { v.onloadeddata = r; v.onerror = () => j(new Error('Video okunamadı')); });
+    await new Promise(r => { v.onseeked = r; v.currentTime = t; });
+    const cv = document.createElement('canvas'); cv.width = 1080; cv.height = Math.round(1080 * ratioH(clipV.ratio));
+    const fake = { ...clipV, id: clipV.id + '-cover', hookOn: !!clipV.hook, hookDur: 999, captionsOn: false, progressOn: false, autoZoom: false, _outDur: 1, hookY: Math.max(0.12, clipV.hookY ?? 0.14) };
+    new Compositor(cv).draw(v, fake, project, t, 0.6);
+    return await new Promise(r => cv.toBlob(r, 'image/png'));
+  } finally { v.removeAttribute('src'); v.load(); }
+}
+async function finishPackage(pkg) {
+  const jobs = S.queue.filter(q => q.pkg === pkg);
+  if (jobs.some(j => j.state === 'waiting' || j.state === 'running')) return;
+  const done = jobs.filter(j => j.state === 'done' && j.blob);
+  if (!done.length) return;
+  const files = [];
+  const base = safeName(jobs[0].baseTitle || jobs[0].name.replace(/ \([^)]*\)$/, ''));
+  for (const j of done) {
+    const P = PLATFORMS[j.variant], folder = `${P.short}/`;
+    files.push({ name: folder + `${base}-${j.variant}.${j.ext}`, blob: j.blob });
+    if (j.cover) files.push({ name: folder + `${base}-${j.variant}-kapak.png`, blob: j.cover });
+    const v = j.meta;
+    files.push({ name: folder + `${base}-${j.variant}-metin.txt`, blob: new Blob([`${P.label}\n\nBaşlık:\n${v.title}\n\nAçıklama:\n${v.description}\n\nEtiketler:\n${v.hashtags.join(' ')}\n`], { type: 'text/plain;charset=utf-8' }) });
+  }
+  const zip = await makeZip(files);
+  download(zip, `${base}-platform-paketi.zip`);
+  snack(done.length === jobs.length ? 'Platform paketi indirildi' : `Paket indirildi (${jobs.length - done.length} sürüm başarısız oldu)`);
+}
+
 // ------------------------------------------------------------------ LOGO
 async function ensureLogo(id) {
   if (!id || hasLogoImage(id)) return;
@@ -2096,7 +2422,7 @@ function enqueue(clips) {
   if (pickMime(S.settings.exportFormat) === null) return snack('Bu tarayıcı video kaydını desteklemiyor. Chrome veya Edge kullan.', { err: true });
   let added = 0;
   for (const c of clips) {
-    if (S.queue.some(q => q.clipId === c.id && (q.state === 'waiting' || q.state === 'running'))) continue;
+    if (S.queue.some(q => q.clipId === c.id && !q.variant && (q.state === 'waiting' || q.state === 'running'))) continue;
     S.queue.push({ id: uid(), clipId: c.id, name: c.title, state: 'waiting', progress: 0, project: S.project, videoUrl: S.videoUrl, settings: { ...S.settings } });
     added++;
   }
@@ -2119,22 +2445,32 @@ async function processQueue() {
   await loadFonts();
   try {
     const musicBlob = clip.music ? await getMusic(clip.music.id) : null;
+    const clipV = job.variant ? applyVariant(clip, job.variant) : clip;
     const { blob, mime } = await exportClip({
-      videoUrl: job.videoUrl, clip, project: proj, settings: job.settings, signal: job.ctrl.signal, musicBlob,
+      videoUrl: job.videoUrl, clip: clipV, project: proj, settings: job.settings, signal: job.ctrl.signal, musicBlob,
       onProgress: p => { job.progress = p; updateQueueItem(job); }
     });
     job.ext = extFor(mime);
     job.url = URL.createObjectURL(blob);
     job.size = blob.size;
     job.blob = blob;
-    job.fileName = `${safeName(clip.title)}.${job.ext}`;
+    job.fileName = `${safeName(clipV.title)}${job.variant ? '-' + job.variant : ''}.${job.ext}`;
+    if (job.pkg) {
+      job.baseTitle = clip.title; job.meta = variantValues(clip, job.variant);
+      job.cover = await renderCover(clipV, proj, job.videoUrl, (rangesFor(clip, proj)[0]?.[0] ?? clip.start) + 1).catch(() => null);
+    }
     job.state = 'done';
     clip.exported = true;
     if (proj === S.project) { saveProject(); renderClips(); } else DB.saveProject(proj).catch(() => {});
-    const a = document.createElement('a'); a.href = job.url; a.download = job.fileName; document.body.appendChild(a); a.click(); a.remove();
+    if (!job.pkg) { const a = document.createElement('a'); a.href = job.url; a.download = job.fileName; document.body.appendChild(a); a.click(); a.remove(); }
   } catch (e) {
     if (e.name === 'AbortError') job.state = 'canceled';
     else { console.error(e); job.state = 'error'; job.error = e.message; }
+  }
+  const pkg = job.pkg;
+  if (pkg && !S.queue.some(q => q.pkg === pkg && (q.state === 'waiting' || q.state === 'running'))) {
+    // paketin videosu son işten sonra bırakılır (kapak için gerekiyor)
+    await finishPackage(pkg).catch(e => snack('Paket hazırlanamadı: ' + e.message, { err: true }));
   }
   releaseJobVideo(job);
   renderQueue();
@@ -2218,6 +2554,7 @@ $('#contentType').innerHTML = Object.entries(CONTENT_TYPES).map(([k, v]) => `<op
 
 function fillSettings() {
   const s = S.settings;
+  $$('#featList [data-feat]').forEach(i => { i.checked = feat(i.dataset.feat); });
   $('#llmProvider').value = s.llmProvider;
   syncLlmFields();
   $('#sttProvider').value = s.sttProvider;
@@ -2318,6 +2655,19 @@ $('#testLlm').addEventListener('click', async e => {
   b.classList.remove('busy');
 });
 
+
+$('#featList').addEventListener('change', e => {
+  const i = e.target.closest('[data-feat]'); if (!i) return;
+  S.settings.features = { ...(S.settings.features || {}), [i.dataset.feat]: i.checked };
+  persist(); applyFeatures();
+});
+/** Kapalı özelliklerin düğmelerini gizler */
+function applyFeatures() {
+  $('#glossBtn').hidden = !feat('glossary');
+  if (!feat('compare')) S.cmpOpen = null;
+  if (S.project) renderClips();
+  if (S.ed) syncVariants();
+}
 
 // ------------------------------------------------------------------ TEMA
 const THEMES = [
@@ -2663,6 +3013,7 @@ if ('launchQueue' in window) {
 // ------------------------------------------------------------------ başlat
 applyTheme();
 applyLayoutMode();
+applyFeatures();
 show('home');
 initHome();
 loadFonts();

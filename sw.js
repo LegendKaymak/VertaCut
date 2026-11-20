@@ -1,10 +1,10 @@
 // VertaCut service worker: uygulama kabuğunu önbelleğe alır, çevrimdışı açılır.
-const VERSION = 'vertacut-v1.9.0';
+const VERSION = 'vertacut-v2.0.0';
 const FONTS = 'vertacut-fonts';
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
   './js/app.js', './js/util.js', './js/db.js', './js/audio.js', './js/ai.js',
-  './js/captions.js', './js/render.js', './js/exporter.js', './js/sfx.js', './js/hooks.js', './fonts/AlloVariable.woff2',
+  './js/captions.js', './js/render.js', './js/exporter.js', './js/sfx.js', './js/hooks.js', './js/mp4audio.js', './js/glossary.js', './js/variants.js', './fonts/AlloVariable.woff2',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png',
   './icons/favicon-16.png', './icons/favicon-32.png', './icons/apple-touch-icon.png',
   './manifest.webmanifest?v=3', './icons/icon.svg?v=3', './icons/favicon-16.png?v=3', './icons/favicon-32.png?v=3', './icons/apple-touch-icon.png?v=3',

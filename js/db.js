@@ -120,13 +120,15 @@ export const DEFAULT_SETTINGS = {
   brandHandle: '',
   theme: 'sunset',             // sunset | light | oled | indigo | system
   guideDismissed: false,
-  layoutMode: 'auto'            // auto | mobile | desktop
+  layoutMode: 'auto',           // auto | mobile | desktop
+  features: { fastAudio: true, compare: true, glossary: true, variants: true },
+  glossary: []                  // kanal sözlüğü: doğru yazımlar [{ term, wrong: [] }]
 };
 
 export function loadSettings() {
   try {
     const s = JSON.parse(localStorage.getItem(SKEY) || '{}');
-    const out = { ...DEFAULT_SETTINGS, ...s, keys: { ...(s.keys || {}) }, llmBaseByProvider: { ...(s.llmBaseByProvider || {}) } };
+    const out = { ...DEFAULT_SETTINGS, ...s, keys: { ...(s.keys || {}) }, llmBaseByProvider: { ...(s.llmBaseByProvider || {}) }, features: { ...DEFAULT_SETTINGS.features, ...(s.features || {}) }, glossary: Array.isArray(s.glossary) ? s.glossary : [] };
     // eski sürüm: ayrı yazıya dökme anahtarı → sağlayıcının kendi anahtarı
     if (s.sttKey) {
       const from = { groq: 'groq', openai: 'openai', gemini: 'gemini', custom: 'custom' }[out.sttProvider] || out.sttProvider;
