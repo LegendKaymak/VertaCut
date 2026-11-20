@@ -223,6 +223,8 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 20px; border: 0; borde
 .bar-actions { margin-left: auto; display: flex; gap: 4px; align-items: center; }
 .wordmark { display: inline-flex; align-items: center; gap: 10px; font-weight: 800; font-size: 19px; letter-spacing: -0.02em; color: var(--text); text-decoration: none; }
 .wm-mark { width: 28px; height: 28px; flex: none; }
+.wm-text small { font-size: 13px; font-weight: 500; color: var(--text-3); letter-spacing: 0; margin-left: 4px; }
+body.m .wm-text small { display: block; margin: -3px 0 0; font-size: 11px; line-height: 1; }
 
 .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 56px; align-items: center; padding: 40px 0 64px; }
 .hero h1 { font-size: clamp(38px, 5.4vw, 66px); line-height: 1.04; font-weight: 800; letter-spacing: -0.018em; max-width: 12ch; text-wrap: balance; }

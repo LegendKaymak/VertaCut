@@ -9,4 +9,5 @@
     <path d="M150 150 H362 L256 364 Z" fill="#fff" stroke="#fff" stroke-width="44" stroke-linejoin="round" mask="url(#m)"/>
   </g>
   <text x="300" y="196" font-family="Allo, Allo ExtraBold, Helvetica, Arial, sans-serif" font-weight="800" font-size="128" letter-spacing="-2" fill="#F7EFF1">VertaCut</text>
+  <text x="304" y="252" font-family="Allo, Allo ExtraBold, Helvetica, Arial, sans-serif" font-weight="800" font-size="40" fill="#877880">by LegendKaymak</text>
 </svg>

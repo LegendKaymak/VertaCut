@@ -1,5 +1,5 @@
 // VertaCut service worker: uygulama kabuğunu önbelleğe alır, çevrimdışı açılır.
-const VERSION = 'vertacut-v1.8.1';
+const VERSION = 'vertacut-v1.8.2';
 const SHELL = [
   './', './index.html', './css/app.css', './manifest.webmanifest',
   './js/app.js', './js/util.js', './js/db.js', './js/audio.js', './js/ai.js',
