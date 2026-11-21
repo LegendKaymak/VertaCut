@@ -7,7 +7,7 @@ const AUTO_MODEL = { gemini: 'auto', openrouter: 'free' };
 /** Ayarlar → Özellikler'den açılıp kapatılabilen özellikler (varsayılan: açık) */
 const feat = k => S.settings.features?.[k] !== false;
 import { PLATFORMS, variantValues, applyVariant, isCustom, makeZip } from './variants.js';
-import { findIn, replaceAt, replaceInText, suggestions, norm as gNorm } from './glossary.js';
+import { findIn, replaceAt, replaceInTextAt, suggestions, norm as gNorm } from './glossary.js';
 import { Compositor, LAYOUTS, DEFAULT_REGIONS, clipWords, ownWords, setLogoImage, hasLogoImage, ratioH } from './render.js';
 import { CAPTION_PRESETS, CAPTION_FONTS, defaultCaptionStyle, buildPages, drawCaptions } from './captions.js';
 import { playSfx, sfxEvents, crossed, duckFactor } from './sfx.js';
@@ -1167,7 +1167,9 @@ function edNav(dir) {
 }
 $('#edPrev').addEventListener('click', () => edNav(-1));
 $('#edNext').addEventListener('click', () => edNav(1));
-$('#edExport').addEventListener('click', () => enqueue([S.ed.clip]));
+$('#edExport').addEventListener('click', () => enqueue([S.ed.clip], edVariant()));
+/** Editörde seçili platform sürümü (ortak klip için null) */
+const edVariant = () => (S.ed?.variant && S.ed.variant !== 'base' && PLATFORMS[S.ed.variant]) ? S.ed.variant : null;
 
 function touch(rethumb = true) {
   const c = S.ed.clip;
@@ -1839,12 +1841,12 @@ $('#chatInput').addEventListener('change', async e => {
 });
 
 // ------------------------------------------------------------------ KANAL SÖZLÜĞÜ
-let glossHits = [];
+let glossHits = [], glossQuery = '';
 $('#glossBtn').addEventListener('click', openGlossary);
 function openGlossary() {
   renderGlossTerms(); renderGlossSuggest();
   $('#glossHits').innerHTML = S.project?.transcript ? '' : '<p class="hint">Toplu düzeltme için önce transkript oluştur. Sözlüğü şimdiden doldurabilirsin; yazıya dökmede kullanılır.</p>';
-  glossHits = []; updateGlossApply();
+  glossHits = []; glossQuery = ''; updateGlossApply();
   $('#glossDlg').showModal();
 }
 const glossary = () => (S.settings.glossary ||= []);
@@ -1885,7 +1887,7 @@ function findGloss() {
   const tr = S.project?.transcript;
   if (!tr) return;
   if (!from) { $('#glossHits').innerHTML = '<p class="hint">Yanlış yazılan kelimeyi gir.</p>'; return; }
-  glossHits = [];
+  glossHits = []; glossQuery = from;
   const ctx = (ws, i, n) => {
     const a = ws.slice(Math.max(0, i - 4), i).map(w => escapeHtml(w.w)).join(' ');
     const m = ws.slice(i, i + n).map(w => escapeHtml(w.w)).join(' ');
@@ -1903,20 +1905,43 @@ function findGloss() {
 }
 function updateGlossApply() {
   const n = $$('#glossHits [data-gk]:checked').length;
-  $('#glossApply').disabled = !n || !$('#glossTo').value.trim();
+  $('#glossApply').disabled = !n || !$('#glossTo').value.trim() || $('#glossFrom').value.trim() !== glossQuery;
   $('#glossApply').lastChild.textContent = n ? `Seçilenleri düzelt (${n})` : 'Seçilenleri düzelt';
 }
 $('#glossTo').addEventListener('input', updateGlossApply);
+// aranan ifade değişince eski eşleşmeler geçersiz: yeniden Bul gerekir
+$('#glossFrom').addEventListener('input', () => {
+  if (glossQuery && $('#glossFrom').value.trim() !== glossQuery) { glossHits = []; glossQuery = ''; $('#glossHits').innerHTML = '<p class="hint">Aranan ifade değişti; yeniden Bul’a bas.</p>'; }
+  updateGlossApply();
+});
 $('#glossHits').addEventListener('change', updateGlossApply);
 $('#glossHits').addEventListener('click', e => { const b = e.target.closest('[data-gt]'); if (b) { e.preventDefault(); mainVideo.currentTime = +b.dataset.gt; } });
 $('#glossAll').addEventListener('change', e => { $$('#glossHits [data-gk]').forEach(x => { x.checked = e.target.checked; }); updateGlossApply(); });
 $('#glossApply').addEventListener('click', () => {
-  const from = $('#glossFrom').value.trim(), to = $('#glossTo').value.trim();
-  const picked = $$('#glossHits [data-gk]:checked').map(x => glossHits[+x.dataset.gk]);
+  const from = glossQuery, to = $('#glossTo').value.trim();
+  if (!from || $('#glossFrom').value.trim() !== from) return updateGlossApply();
+  const picked = $$('#glossHits [data-gk]:checked').map(x => glossHits[+x.dataset.gk]).filter(Boolean);
   if (!picked.length || !to) return;
   const p = S.project, tr = p.transcript;
   // tek adımda geri alınabilsin diye önceki hâli sakla
   const before = { words: structuredClone(tr.words), segments: structuredClone(tr.segments || []), clips: p.clips.filter(c => c.words).map(c => [c, structuredClone(c.words)]) };
+  // segment metinleri: yalnız seçilen transkript eşleşmelerini, segment içindeki sıralarına göre değiştir
+  // (kelimeler değişmeden önce hesaplanır)
+  const segs = tr.segments || [];
+  const segOf = t => {
+    let k = segs.findIndex(sg => t >= sg.start && t < sg.end);
+    if (k < 0) k = segs.findIndex(sg => t >= sg.start - 0.05 && t < sg.end + 0.05);
+    return k;
+  };
+  const segPlan = new Map(); // segment indeksi → { all, picked:Set<sıra> }
+  const pickedTx = new Set(picked.filter(h => h.where === 'tx'));
+  for (const h of glossHits.filter(h => h.where === 'tx').sort((a, b) => a.i - b.i)) {
+    const k = segOf(h.t); if (k < 0) continue;
+    if (!segPlan.has(k)) segPlan.set(k, { all: 0, picked: new Set() });
+    const pl = segPlan.get(k);
+    if (pickedTx.has(h)) pl.picked.add(pl.all);
+    pl.all++;
+  }
   const byList = new Map();
   for (const h of picked) { const k = h.where; if (!byList.has(k)) byList.set(k, []); byList.get(k).push(h); }
   let n = 0;
@@ -1926,9 +1951,13 @@ $('#glossApply').addEventListener('click', () => {
     hs.sort((a, b) => b.i - a.i); // sondan başa: birleşen kelimeler indeksleri kaydırmasın
     for (const h of hs) { replaceAt(ws, h.i, h.n, to); n++; }
   }
-  // seçilen transkript yerlerinin geçtiği segment metinlerini de güncelle
-  const times = picked.filter(h => h.where === 'tx').map(h => h.t);
-  for (const sg of tr.segments || []) if (times.some(t => t >= sg.start - 0.05 && t < sg.end + 0.05)) sg.text = replaceInText(sg.text, from, to);
+  for (const [k, pl] of segPlan) {
+    if (!pl.picked.size) continue;
+    const sg = segs[k], r = replaceInTextAt(sg.text, from, to, pl.picked);
+    // metin ile kelime listesi aynı sayıda eşleşme vermiyorsa yalnız hepsi seçildiyse tümünü değiştir
+    if (r.count === pl.all) sg.text = r.text;
+    else if (pl.picked.size === pl.all) sg.text = replaceInTextAt(sg.text, from, to).text;
+  }
   addTerm(to, from);
   const bump = () => { tr._v = Date.now(); p.clips.forEach(c => { c._rev = (c._rev || 0) + 1; c.thumbRev = null; }); saveProject(); renderTranscript(); renderClips(); queueThumbs(); };
   bump();
@@ -2417,13 +2446,13 @@ $('#chaptersBody').addEventListener('click', async e => { const b = e.target.clo
 
 // ------------------------------------------------------------------ DIŞA AKTARMA KUYRUĞU
 $('#exportAllBtn').addEventListener('click', () => enqueue(sortedClips()));
-function enqueue(clips) {
+function enqueue(clips, variant = null) {
   if (!S.file) return snack('Önce videoyu yeniden seç.', { err: true });
   if (pickMime(S.settings.exportFormat) === null) return snack('Bu tarayıcı video kaydını desteklemiyor. Chrome veya Edge kullan.', { err: true });
   let added = 0;
   for (const c of clips) {
-    if (S.queue.some(q => q.clipId === c.id && !q.variant && (q.state === 'waiting' || q.state === 'running'))) continue;
-    S.queue.push({ id: uid(), clipId: c.id, name: c.title, state: 'waiting', progress: 0, project: S.project, videoUrl: S.videoUrl, settings: { ...S.settings } });
+    if (S.queue.some(q => q.clipId === c.id && !q.pkg && (q.variant || null) === variant && (q.state === 'waiting' || q.state === 'running'))) continue;
+    S.queue.push({ id: uid(), clipId: c.id, ...(variant ? { variant, name: `${variantValues(c, variant).title} (${PLATFORMS[variant].short})` } : { name: c.title }), state: 'waiting', progress: 0, project: S.project, videoUrl: S.videoUrl, settings: { ...S.settings } });
     added++;
   }
   $('#queue').hidden = false;
@@ -2973,7 +3002,7 @@ document.addEventListener('keydown', e => {
   const view = document.body.dataset.view;
   if (e.key === '?') { e.preventDefault(); $('#keysDlg').showModal(); return; }
   if (view === 'editor') {
-    if ((e.key === 'e' || e.key === 'E') && !e.ctrlKey && !e.metaKey) { enqueue([S.ed.clip]); return; }
+    if ((e.key === 'e' || e.key === 'E') && !e.ctrlKey && !e.metaKey) { enqueue([S.ed.clip], edVariant()); return; }
     if (e.code === 'Space') { e.preventDefault(); edToggle(); }
     else if (e.key === 'Escape') closeEditor();
     else if (e.key === 'ArrowRight' && e.altKey) edNav(1);

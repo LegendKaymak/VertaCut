@@ -38,6 +38,31 @@ export function replaceInText(text, phrase, to) {
   return String(text).replace(re, (m, pre) => pre + to);
 }
 
+/**
+ * Segment metnindeki eşleşmeleri findIn ile aynı kurala göre (boşlukla ayrılmış, Türkçe küçük harf) bulur.
+ * pick: değiştirilecek eşleşmelerin sıra numaraları (Set); verilmezse hepsi.
+ * Dönüş: { text, count } — count, metindeki toplam eşleşme sayısı.
+ */
+export function replaceInTextAt(text, phrase, to, pick = null) {
+  text = String(text);
+  const want = tokens(phrase);
+  const toks = [...text.matchAll(/\S+/g)].map(m => ({ s: m.index, e: m.index + m[0].length, w: m[0] }));
+  const hits = [];
+  if (want.length) for (let i = 0; i + want.length <= toks.length; i++) {
+    let ok = true;
+    for (let k = 0; k < want.length; k++) if (norm(toks[i + k].w) !== want[k]) { ok = false; break; }
+    if (ok) { hits.push(i); i += want.length - 1; }
+  }
+  let out = text;
+  for (let h = hits.length - 1; h >= 0; h--) {
+    if (pick && !pick.has(h)) continue;
+    const first = toks[hits[h]], last = toks[hits[h] + want.length - 1];
+    const lead = (CORE.exec(first.w) || [])[1] || '', trail = (CORE.exec(last.w) || [])[3] || '';
+    out = out.slice(0, first.s + lead.length) + to + out.slice(last.e - trail.length);
+  }
+  return { text: out, count: hits.length };
+}
+
 function lev(a, b, max) {
   if (Math.abs(a.length - b.length) > max) return max + 1;
   let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
